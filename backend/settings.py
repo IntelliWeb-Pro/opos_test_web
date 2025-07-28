@@ -103,7 +103,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Añade aquí la URL de tu frontend en Vercel cuando la tengas
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    # "https://tu-frontend.vercel.app", # <--- AÑADIRÁS ESTA LÍNEA LUEGO
+    "https://opos-test-frontend.vercel.app/", # <--- AÑADIRÁS ESTA LÍNEA LUEGO
 ]
 
 REST_FRAMEWORK = { 'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',) }
