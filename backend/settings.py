@@ -105,16 +105,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- CORS y CSRF (Permisos para el Frontend) ---
 # Leemos la URL del frontend de una variable de entorno para producción
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+# Al final de backend/settings.py
+
+# --- CORS y CSRF (Permisos para el Frontend) ---
+# FORZAMOS LAS URLS PARA ASEGURARNOS DE QUE FUNCIONE
 
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    FRONTEND_URL,
+    "http://localhost:3000",
+    "https://opos-test-frontend.vercel.app",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-    FRONTEND_URL,
+    "http://localhost:3000",
+    "https://opos-test-frontend.vercel.app",
 ]
 
 REST_FRAMEWORK = { 'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',) }
