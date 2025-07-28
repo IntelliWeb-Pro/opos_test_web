@@ -8,3 +8,13 @@ Content-Type: application/json
   "password1": "unacontraseñasegura123",
   "password2": "unacontraseñasegura123"
 }
+
+
+### Iniciar sesión con el usuario creado
+POST http://127.0.0.1:8000/api/auth/login/
+Content-Type: application/json
+
+{
+  "username": "opositor_prueba",
+  "password": "unacontraseñasegura123"
+}
