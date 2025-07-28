@@ -110,11 +110,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # --- CORS y CSRF (Permisos para el Frontend) ---
 # FORZAMOS LAS URLS PARA ASEGURARNOS DE QUE FUNCIONE
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "https://opos-test-frontend.vercel.app",
-]
+# --- CORS y CSRF (Permisos para el Frontend) ---
 
+# Comentamos la lista específica para la prueba
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "https://opos-test-frontend.vercel.app",
+# ]
+
+# AÑADIMOS ESTA LÍNEA PARA PERMITIR CUALQUIER ORIGEN (SOLO PARA DEPURAR)
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Mantenemos la configuración de CSRF como estaba
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "https://opos-test-frontend.vercel.app",
