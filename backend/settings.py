@@ -1,28 +1,31 @@
-# backend/settings.py
+# backend/settings.py (VERSIÓN FINAL PARA PRODUCCIÓN)
 
+import os
 from pathlib import Path
+import dj_database_url
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-%9&dz2)ae_#jate7a+*tri=6ahq-1vwp3!nvx58qdp!mx7(n^*'
+# Lee la SECRET_KEY de una variable de entorno. ¡Más seguro!
+SECRET_KEY = os.environ.get('SECRET_KEY', 'una_clave_secreta_por_defecto_para_desarrollo')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# DEBUG se desactiva automáticamente en producción (en Render)
+DEBUG = 'RENDER' not in os.environ
 
+# Añade aquí la URL de tu futuro servicio de Render
 ALLOWED_HOSTS = []
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
-
-# --- APLICACIONES ---
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'whitenoise.runserver_nostatic', # <--- AÑADIR WHITENOISE
     'django.contrib.staticfiles',
-    # Apps de terceros
     'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
@@ -32,15 +35,14 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'dj_rest_auth.registration',
-    # Nuestras apps
     'tests',
 ]
 
 SITE_ID = 1
 
-# --- MIDDLEWARE ---
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # <--- AÑADIR WHITENOISE
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -70,17 +72,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-
-# --- BASE DE DATOS ---
+# --- BASE DE DATOS (Configuración dinámica para Render) ---
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default='sqlite:///db.sqlite3',
+        conn_max_age=600
+    )
 }
 
-
-# --- VALIDACIÓN DE CONTRASEÑAS ---
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
@@ -88,109 +87,37 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},
 ]
 
-
-# --- INTERNACIONALIZACIÓN ---
 LANGUAGE_CODE = 'es-es'
 TIME_ZONE = 'Europe/Madrid'
 USE_I18N = True
 USE_TZ = True
 
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# --- ARCHIVOS ESTÁTICOS ---
-STATIC_URL = 'static/'
-
-# --- CLAVE PRIMARIA POR DEFECTO ---
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
-# ==============================================================================
 # --- CONFIGURACIONES DE NUESTRO PROYECTO ---
-# ==============================================================================
 
-# --- CORS (Permisos para el Frontend) ---
+# Añade aquí la URL de tu frontend en Vercel cuando la tengas
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    # "https://tu-frontend.vercel.app", # <--- AÑADIRÁS ESTA LÍNEA LUEGO
 ]
 
-# --- DJANGO REST FRAMEWORK ---
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-}
-
-# --- DJ-REST-AUTH Y ALLAUTH ---
-REST_AUTH = {
-    'USE_JWT': True,
-    'JWT_AUTH_COOKIE': 'opos-test-auth',
-    'JWT_AUTH_REFRESH_COOKIE': 'opos-test-refresh-token',
-    'REGISTER_SERIALIZER': 'dj_rest_auth.registration.serializers.RegisterSerializer',
-}
-
-# Línea CLAVE que faltaba: Le dice a Django que use el sistema de autenticación de allauth.
-AUTHENTICATION_BACKENDS = [
-    'allauth.account.auth_backends.AuthenticationBackend',
-    'django.contrib.auth.backends.ModelBackend',
-]
-
-# Configuración de Allauth para que no pida verificación de email y funcione bien con la API
+REST_FRAMEWORK = { 'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',) }
+REST_AUTH = { 'USE_JWT': True, 'JWT_AUTH_HTTPONLY': False }
+AUTHENTICATION_BACKENDS = [ 'allauth.account.auth_backends.AuthenticationBackend', 'django.contrib.auth.backends.ModelBackend',]
 ACCOUNT_EMAIL_VERIFICATION = 'none'
-ACCOUNT_AUTHENTICATION_METHOD = 'username_email' # Permite login con usuario o email
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
 ACCOUNT_EMAIL_REQUIRED = True
-
-# Le decimos a Django que "imprima" los emails en la consola en lugar de enviarlos
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-
-# Al final de backend/settings.py
-
-# ==============================================================================
-# --- CONFIGURACIONES DE NUESTRO PROYECTO ---
-# ==============================================================================
-
-# --- CORS (Permisos para el Frontend) ---
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]
-
-# --- DJANGO REST FRAMEWORK ---
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        # Usamos la autenticación de simplejwt
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-}
-
-# --- DJ-REST-AUTH ---
-REST_AUTH = {
-    'USE_JWT': True,
-    'JWT_AUTH_HTTPONLY': False, # Importante para que el frontend pueda leer el token
-    'USER_DETAILS_SERIALIZER': 'dj_rest_auth.serializers.UserDetailsSerializer',
-}
-
-# --- DJANGO-ALLAUTH ---
-# Línea CLAVE: Le dice a Django que use el sistema de autenticación de allauth.
-AUTHENTICATION_BACKENDS = [
-    'allauth.account.auth_backends.AuthenticationBackend',
-    'django.contrib.auth.backends.ModelBackend',
-]
-# Configuración de Allauth para un sistema basado en email
-ACCOUNT_AUTHENTICATION_METHOD = 'email'       # Login con email
-ACCOUNT_EMAIL_REQUIRED = True                 # El email es obligatorio
-ACCOUNT_UNIQUE_EMAIL = True                   # Cada email debe ser único
-ACCOUNT_USERNAME_REQUIRED = False             # No pedimos un nombre de usuario al registrarse
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None      # Le decimos que no hay campo de username en el modelo
-ACCOUNT_EMAIL_VERIFICATION = 'none'           # No pedimos verificación de email
-
-# Le decimos a Django que "imprima" los emails en la consola en lugar de enviarlos
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-
-SIMPLE_JWT = {
-    'AUTH_HEADER_TYPES': ('Bearer',),
-}
-
-# Al final de backend/settings.py
-
+# --- CLAVES DE STRIPE (leídas de variables de entorno) ---
 # --- CLAVES DE STRIPE ---
 STRIPE_PUBLISHABLE_KEY = 'pk_live_51RprfeBX1J8TMJHD47LveYeuejEjOauTcAAvnIv8fKK8prkSMrLbEllbCxjyGMhKu4S6143dhXLV7Ak5AO2Pklpz0048tPcIz4'
 STRIPE_SECRET_KEY = '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'
