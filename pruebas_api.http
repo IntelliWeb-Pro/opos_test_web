@@ -1,0 +1,10 @@
+### Registrar un nuevo usuario
+POST http://127.0.0.1:8000/api/auth/registration/
+Content-Type: application/json
+
+{
+  "username": "opositor_prueba",
+  "email": "prueba@email.com",
+  "password1": "unacontraseñasegura123",
+  "password2": "unacontraseñasegura123"
+}
