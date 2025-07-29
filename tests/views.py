@@ -11,26 +11,36 @@ from rest_framework.views import APIView
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
-    PreguntaDetalladaSerializer, ResultadoTestSerializer
+    PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer
 )
 
 # --- VISTAS DE LA API PRINCIPAL (ROUTER) ---
 
 class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows oposiciones to be viewed.
+    """
     queryset = Oposicion.objects.all()
     serializer_class = OposicionSerializer
     permission_classes = [permissions.AllowAny]
 
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows temas to be viewed.
+    """
     queryset = Tema.objects.all()
     serializer_class = TemaSerializer
     permission_classes = [permissions.AllowAny]
 
 class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint for preguntas. Allows filtering by tema.
+    """
     permission_classes = [permissions.AllowAny]
     queryset = Pregunta.objects.all()
 
     def get_serializer_class(self):
+        # Use a simple serializer for lists (for the test) and a detailed one for single items (for correction)
         if self.action == 'list':
             return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
@@ -42,7 +52,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(tema__id=tema_id)
             all_questions = list(queryset)
             random.shuffle(all_questions)
-            return all_questions[:20]
+            return all_questions[:20] # Limit test to 20 questions
         return queryset
     
     @action(detail=False, methods=['post'])
@@ -56,19 +66,33 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 class ResultadoTestViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for viewing and creating test results for the logged-in user.
+    """
     queryset = ResultadoTest.objects.all()
-    serializer_class = ResultadoTestSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_class(self):
+        # Use a different serializer for creating vs reading results
+        if self.action == 'create':
+            return ResultadoTestCreateSerializer
+        return ResultadoTestSerializer
+
     def get_queryset(self):
+        # Users can only see their own results
         return self.queryset.filter(usuario=self.request.user)
 
     def perform_create(self, serializer):
+        # Automatically assign the logged-in user when a result is created
         serializer.save(usuario=self.request.user)
+
 
 # --- VISTAS ESPECÍFICAS (NO ROUTER) ---
 
 class EstadisticasUsuarioView(APIView):
+    """
+    API endpoint for user statistics.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -88,13 +112,19 @@ class EstadisticasUsuarioView(APIView):
         }
         return Response(data)
 
+# --- VISTAS DE PAGOS (STRIPE) ---
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class CreateCheckoutSessionView(APIView):
+    """
+    API endpoint to create a Stripe Checkout session.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        price_id = 'price_1PabcdeFGHIjklmnOPQRS' # <-- RECUERDA PONER TU ID DE PRECIO REAL AQUÍ
+        # REMEMBER TO REPLACE THIS WITH YOUR REAL PRICE ID FROM THE STRIPE DASHBOARD
+        price_id = 'price_1PabcdeFGHIjklmnOPQRS' 
         try:
             checkout_session = stripe.checkout.Session.create(
                 line_items=[{'price': price_id, 'quantity': 1}],
@@ -108,6 +138,9 @@ class CreateCheckoutSessionView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class StripeWebhookView(APIView):
+    """
+    API endpoint to handle incoming webhooks from Stripe.
+    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -115,14 +148,10 @@ class StripeWebhookView(APIView):
         sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
         event = None
         try:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
-            )
-        except ValueError:
+            event = stripe.Webhook.construct_event(payload, sig_header, settings.STRIPE_WEBHOOK_SECRET)
+        except (ValueError, stripe.error.SignatureVerificationError):
             return Response(status=400)
-        except stripe.error.SignatureVerificationError:
-            return Response(status=400)
-
+        
         if event['type'] == 'checkout.session.completed':
             session = event['data']['object']
             customer_email = session['customer_details']['email']
@@ -136,4 +165,5 @@ class StripeWebhookView(APIView):
                 suscripcion.save()
             except User.DoesNotExist:
                 return Response(status=400)
+        
         return Response(status=200)
