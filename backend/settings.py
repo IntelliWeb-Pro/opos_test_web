@@ -103,27 +103,49 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # --- CONFIGURACIONES PERSONALIZADAS ---
 
 # Leemos la URL del frontend de una variable de entorno para producción
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+# Al final de backend/settings.py
 
+# ==============================================================================
+# --- CONFIGURACIONES DE NUESTRO PROYECTO ---
+# ==============================================================================
+
+# --- CORS y CSRF (Permisos para el Frontend) ---
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    FRONTEND_URL,
+    "http://localhost:3000",
+    "https://opos-test-frontend.vercel.app",
 ]
-
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-    FRONTEND_URL,
+    "http://localhost:3000",
+    "https://opos-test-frontend.vercel.app",
 ]
 
-REST_FRAMEWORK = { 'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',) }
-REST_AUTH = { 'USE_JWT': True, 'JWT_AUTH_HTTPONLY': False }
-AUTHENTICATION_BACKENDS = [ 'allauth.account.auth_backends.AuthenticationBackend', 'django.contrib.auth.backends.ModelBackend',]
+# --- DJANGO REST FRAMEWORK ---
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+
+# --- DJ-REST-AUTH Y ALLAUTH (Configuración Completa) ---
+REST_AUTH = {
+    'USE_JWT': True,
+    'JWT_AUTH_HTTPONLY': False,
+    'USER_DETAILS_SERIALIZER': 'dj_rest_auth.serializers.UserDetailsSerializer',
+    'SESSION_LOGIN': False, # Desactivamos el login de sesión tradicional
+}
+
+AUTHENTICATION_BACKENDS = [
+    'allauth.account.auth_backends.AuthenticationBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # --- CLAVES DE STRIPE (leídas de forma segura de variables de entorno) ---
