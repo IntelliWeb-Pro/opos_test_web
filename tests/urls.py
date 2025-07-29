@@ -1,16 +1,18 @@
-# tests/urls.py (Versión Corregida)
-
+from django.contrib import admin
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-# Asegúrate de que ResultadoTestViewSet está importado en esta línea
-from .views import OposicionViewSet, TemaViewSet, PreguntaViewSet, ResultadoTestViewSet
-
-router = DefaultRouter()
-router.register(r'oposiciones', OposicionViewSet, basename='oposicion')
-router.register(r'temas', TemaViewSet, basename='tema')
-router.register(r'preguntas', PreguntaViewSet, basename='pregunta')
-router.register(r'resultados', ResultadoTestViewSet, basename='resultado') # Ahora esta línea funcionará
+from tests.views import CreateCheckoutSessionView, StripeWebhookView, EstadisticasUsuarioView
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('admin/', admin.site.urls),
+    
+    # --- CORRECCIÓN: La ruta específica va PRIMERO ---
+    path('api/estadisticas/', EstadisticasUsuarioView.as_view(), name='estadisticas-usuario'),
+    
+    # La ruta general que incluye el resto de la API va DESPUÉS
+    path('api/', include('tests.urls')),
+    
+    path('api/auth/', include('dj_rest_auth.urls')),
+    path('api/auth/registration/', include('dj_rest_auth.registration.urls')),
+    path('api/create-checkout-session/', CreateCheckoutSessionView.as_view(), name='create-checkout-session'),
+    path('api/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'),
 ]
