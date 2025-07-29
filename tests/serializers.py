@@ -1,5 +1,16 @@
 from rest_framework import serializers
+from dj_rest_auth.registration.serializers import RegisterSerializer
 from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest
+
+# --- NUEVO: Serializer de Registro Personalizado ---
+class CustomRegisterSerializer(RegisterSerializer):
+    # Sobrescribimos el campo 'username' del serializer original
+    username = serializers.CharField(max_length=13, min_length=4)
+
+    def save(self, request):
+        # Llamamos al método 'save' original para que haga todo el trabajo de crear el usuario
+        user = super().save(request)
+        return user
 
 # --- SERIALIZERS SIMPLES Y DETALLADOS PARA PREGUNTAS (Sin cambios) ---
 class RespuestaSimpleSerializer(serializers.ModelSerializer):
@@ -36,20 +47,15 @@ class OposicionSerializer(serializers.ModelSerializer):
         model = Oposicion
         fields = ['id', 'nombre', 'temas']
 
-# --- SERIALIZERS DE RESULTADOS (CORREGIDOS) ---
-
-# Serializer para LEER resultados (muestra toda la info del tema)
+# --- SERIALIZERS DE RESULTADOS (Sin cambios) ---
 class ResultadoTestSerializer(serializers.ModelSerializer):
     tema = TemaSerializer(read_only=True)
     oposicion_nombre = serializers.CharField(source='tema.oposicion.nombre', read_only=True)
-    
     class Meta:
         model = ResultadoTest
         fields = ['id', 'tema', 'puntuacion', 'total_preguntas', 'fecha', 'oposicion_nombre']
 
-# NUEVO Serializer para CREAR resultados (acepta solo el ID del tema)
 class ResultadoTestCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ResultadoTest
-        # Solo necesita los campos que el frontend envía para crear
         fields = ['tema', 'puntuacion', 'total_preguntas']
