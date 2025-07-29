@@ -1,5 +1,3 @@
-# tests/serializers.py (Versión Actualizada)
-
 from rest_framework import serializers
 from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest
 
@@ -38,15 +36,20 @@ class OposicionSerializer(serializers.ModelSerializer):
         model = Oposicion
         fields = ['id', 'nombre', 'temas']
 
-# --- SERIALIZER DE RESULTADOS (ACTUALIZADO) ---
-class ResultadoTestSerializer(serializers.ModelSerializer):
-    # Le decimos que use el TemaSerializer para mostrar los detalles del tema
-    tema = TemaSerializer(read_only=True)
-    # Añadimos el nombre de la oposición a través del tema
-    oposicion_nombre = serializers.CharField(source='tema.oposicion.nombre', read_only=True)
+# --- SERIALIZERS DE RESULTADOS (CORREGIDOS) ---
 
+# Serializer para LEER resultados (muestra toda la info del tema)
+class ResultadoTestSerializer(serializers.ModelSerializer):
+    tema = TemaSerializer(read_only=True)
+    oposicion_nombre = serializers.CharField(source='tema.oposicion.nombre', read_only=True)
+    
     class Meta:
         model = ResultadoTest
-        # Añadimos 'oposicion_nombre' a los campos que devolverá la API
         fields = ['id', 'tema', 'puntuacion', 'total_preguntas', 'fecha', 'oposicion_nombre']
-        read_only_fields = ['usuario']
+
+# NUEVO Serializer para CREAR resultados (acepta solo el ID del tema)
+class ResultadoTestCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ResultadoTest
+        # Solo necesita los campos que el frontend envía para crear
+        fields = ['tema', 'puntuacion', 'total_preguntas']
