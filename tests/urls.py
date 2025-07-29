@@ -4,10 +4,7 @@ from .views import (
     OposicionViewSet,
     TemaViewSet,
     PreguntaViewSet,
-    ResultadoTestViewSet,
-    EstadisticasUsuarioView,
-    CreateCheckoutSessionView,
-    StripeWebhookView
+    ResultadoTestViewSet
 )
 
 # El router crea automáticamente las URLs para Oposiciones, Temas, etc.
@@ -17,13 +14,7 @@ router.register(r'temas', TemaViewSet, basename='tema')
 router.register(r'preguntas', PreguntaViewSet, basename='pregunta')
 router.register(r'resultados', ResultadoTestViewSet, basename='resultado')
 
-# Juntamos todas las URLs de nuestra aplicación aquí
+# Este archivo ahora SOLO exporta las rutas del router.
 urlpatterns = [
-    # Incluye las URLs generadas por el router (/oposiciones, /temas, etc.)
     path('', include(router.urls)),
-    
-    # Añadimos las URLs específicas que no son del router
-    path('estadisticas/', EstadisticasUsuarioView.as_view(), name='estadisticas-usuario'),
-    path('create-checkout-session/', CreateCheckoutSessionView.as_view(), name='create-checkout-session'),
-    path('webhook/', StripeWebhookView.as_view(), name='stripe-webhook'),
 ]
