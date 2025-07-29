@@ -2,24 +2,19 @@ from django.contrib import admin
 from django.urls import path, include
 from tests.views import CreateCheckoutSessionView, StripeWebhookView, EstadisticasUsuarioView
 
-# --- NUEVO: Creamos un conjunto de URLs para nuestra API ---
-api_urlpatterns = [
-    path('', include('tests.urls')), # Incluye /oposiciones, /temas, /preguntas, etc.
-    path('estadisticas/', EstadisticasUsuarioView.as_view(), name='estadisticas-usuario'),
-]
-
 urlpatterns = [
     path('admin/', admin.site.urls),
     
-    # --- RUTAS DE AUTENTICACIÓN ---
+    # --- RUTAS ESPECÍFICAS DE LA API ---
+    # Estas se comprueban primero para que no haya conflictos.
     path('api/auth/', include('dj_rest_auth.urls')),
     path('api/auth/registration/', include('dj_rest_auth.registration.urls')),
-    
-    # --- RUTAS DE PAGOS ---
+    path('api/estadisticas/', EstadisticasUsuarioView.as_view(), name='estadisticas-usuario'),
     path('api/create-checkout-session/', CreateCheckoutSessionView.as_view(), name='create-checkout-session'),
     path('api/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'),
     
-    # --- RUTA GENERAL PARA NUESTRA API (v1) ---
-    # Todas las rutas de la aplicación (oposiciones, temas, etc.) estarán bajo /api/v1/
-    path('api/v1/', include(api_urlpatterns)),
+    # --- RUTA GENERAL DE LA API ---
+    # Esta ruta captura el resto de peticiones como /api/oposiciones/, /api/temas/, etc.
+    # y las envía a la app 'tests' para que las gestione.
+    path('api/', include('tests.urls')),
 ]
