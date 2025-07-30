@@ -51,3 +51,14 @@ class ResultadoTest(models.Model):
         return f"Test de {self.usuario.username} en {self.tema.nombre} - {self.puntuacion}/{self.total_preguntas}"
     class Meta:
         ordering = ['-fecha']
+class PreguntaFallada(models.Model):
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    pregunta = models.ForeignKey(Pregunta, on_delete=models.CASCADE)
+    fecha_fallo = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Fallo de {self.usuario.username} en pregunta {self.pregunta.id}"
+
+    class Meta:
+        # Nos aseguramos de que no se guarde el mismo fallo varias veces para el mismo usuario
+        unique_together = ('usuario', 'pregunta')

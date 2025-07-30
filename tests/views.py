@@ -34,7 +34,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Pregunta.objects.all()
 
     def get_serializer_class(self):
-        if self.action == 'list':
+        if self.action == 'list' or self.action == 'repaso':
             return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
 
@@ -58,6 +58,25 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(preguntas_corregidas, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def repaso(self, request):
+        tema_id = self.request.query_params.get('tema')
+        if not tema_id:
+            return Response({"error": "Se requiere un ID de tema"}, status=400)
+        
+        preguntas_falladas_ids = PreguntaFallada.objects.filter(
+            usuario=request.user, 
+            pregunta__tema__id=tema_id
+        ).values_list('pregunta_id', flat=True)
+
+        if not preguntas_falladas_ids:
+             return Response([])
+
+        queryset = Pregunta.objects.filter(id__in=preguntas_falladas_ids)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+
 class ResultadoTestViewSet(viewsets.ModelViewSet):
     queryset = ResultadoTest.objects.all()
     permission_classes = [permissions.IsAuthenticated]
@@ -71,7 +90,21 @@ class ResultadoTestViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(usuario=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(usuario=self.request.user)
+        resultado = serializer.save(usuario=self.request.user)
+        ids_preguntas_falladas = self.request.data.get('fallos', [])
+        if ids_preguntas_falladas:
+            for pregunta_id in ids_preguntas_falladas:
+                PreguntaFallada.objects.get_or_create(
+                    usuario=self.request.user,
+                    pregunta_id=pregunta_id
+                )
+        
+        ids_preguntas_acertadas = self.request.data.get('aciertos', [])
+        if ids_preguntas_acertadas:
+            PreguntaFallada.objects.filter(
+                usuario=self.request.user,
+                pregunta_id__in=ids_preguntas_acertadas
+            ).delete()
 
 
 # --- VISTAS ESPECÍFICAS (NO ROUTER) ---
