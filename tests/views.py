@@ -139,20 +139,16 @@ class RankingSemanalView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        # Calculamos el inicio de la semana (lunes)
         today = date.today()
         start_of_week = today - timedelta(days=today.weekday())
         
-        # Filtramos los resultados de esta semana
         resultados_semanales = ResultadoTest.objects.filter(fecha__gte=start_of_week)
 
-        # Agrupamos por usuario y calculamos su puntuación total y preguntas totales
         ranking_data = resultados_semanales.values('usuario__username').annotate(
             puntuacion_total=Sum('puntuacion'),
             preguntas_totales=Sum('total_preguntas')
-        ).filter(preguntas_totales__gt=0) # Evitamos división por cero
+        ).filter(preguntas_totales__gt=0)
 
-        # Calculamos el porcentaje y lo ordenamos
         ranking_list = []
         for item in ranking_data:
             porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
@@ -161,8 +157,23 @@ class RankingSemanalView(APIView):
                 'porcentaje_aciertos': round(porcentaje, 2)
             })
         
-        # Ordenamos la lista por el porcentaje de aciertos (de mayor a menor)
         ranking_list.sort(key=lambda x: x['porcentaje_aciertos'], reverse=True)
 
-        # Devolvemos solo el top 3
-        return Response(ranking_list[:3])
+        # Buscamos la posición del usuario actual
+        user_rank = None
+        for i, user_data in enumerate(ranking_list):
+            if user_data['username'] == request.user.username:
+                user_rank = {
+                    'rank': i + 1,
+                    'username': user_data['username'],
+                    'porcentaje_aciertos': user_data['porcentaje_aciertos']
+                }
+                break
+
+        # Preparamos la respuesta final
+        response_data = {
+            'podium': ranking_list[:3],
+            'user_rank': user_rank
+        }
+        
+        return Response(response_data)
