@@ -17,27 +17,21 @@ from .serializers import (
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer
 )
 
-# --- VISTAS DE LA API PRINCIPAL (ROUTER) ---
-
+# ... (OposicionViewSet, TemaViewSet, PreguntaViewSet, ResultadoTestViewSet no cambian)
 class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Oposicion.objects.all()
     serializer_class = OposicionSerializer
     permission_classes = [permissions.AllowAny]
-
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Tema.objects.all()
     serializer_class = TemaSerializer
     permission_classes = [permissions.AllowAny]
-
 class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
     queryset = Pregunta.objects.all()
-
     def get_serializer_class(self):
-        if self.action == 'list':
-            return PreguntaSimpleSerializer
+        if self.action == 'list': return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
-
     def get_queryset(self):
         queryset = Pregunta.objects.all()
         tema_id = self.request.query_params.get('tema')
@@ -47,35 +41,26 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
             random.shuffle(all_questions)
             return all_questions[:20]
         return queryset
-    
     @action(detail=False, methods=['post'])
     def corregir(self, request):
         ids_preguntas = request.data.get('ids', [])
-        if not ids_preguntas:
-            return Response({"error": "No se proporcionaron IDs de preguntas"}, status=400)
-        
+        if not ids_preguntas: return Response({"error": "No se proporcionaron IDs de preguntas"}, status=400)
         preguntas_corregidas = Pregunta.objects.filter(id__in=ids_preguntas)
         serializer = self.get_serializer(preguntas_corregidas, many=True)
         return Response(serializer.data)
-
 class ResultadoTestViewSet(viewsets.ModelViewSet):
     queryset = ResultadoTest.objects.all()
     permission_classes = [permissions.IsAuthenticated]
-
     def get_serializer_class(self):
-        if self.action == 'create':
-            return ResultadoTestCreateSerializer
+        if self.action == 'create': return ResultadoTestCreateSerializer
         return ResultadoTestSerializer
-
     def get_queryset(self):
         return self.queryset.filter(usuario=self.request.user)
-
     def perform_create(self, serializer):
         serializer.save(usuario=self.request.user)
 
 
-# --- VISTAS ESPECÍFICAS (NO ROUTER) ---
-
+# --- VISTA DE ESTADÍSTICAS (ACTUALIZADA CON PUNTOS DÉBILES) ---
 class EstadisticasUsuarioView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -86,10 +71,8 @@ class EstadisticasUsuarioView(APIView):
         if not resultados.exists():
             return Response({"message": "No hay resultados de tests para este usuario."}, status=status.HTTP_200_OK)
         
-        resumen_total = resultados.aggregate(
-            total_aciertos=Sum('puntuacion'),
-            total_preguntas=Sum('total_preguntas')
-        )
+        # ... (Cálculos de resumen y media general no cambian)
+        resumen_total = resultados.aggregate(total_aciertos=Sum('puntuacion'), total_preguntas=Sum('total_preguntas'))
         total_aciertos = resumen_total['total_aciertos'] or 0
         total_preguntas_global = resumen_total['total_preguntas'] or 0
         total_fallos = total_preguntas_global - total_aciertos
@@ -103,87 +86,29 @@ class EstadisticasUsuarioView(APIView):
             media_test=ExpressionWrapper((F('puntuacion') * 100.0) / F('total_preguntas'), output_field=FloatField())
         )
 
+        # --- NUEVO: CÁLCULO DE PUNTOS DÉBILES Y FUERTES ---
+        stats_tema = resultados.values('tema__id', 'tema__nombre', 'tema__oposicion__nombre').annotate(
+            media_tema=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField())
+        )
+        
+        puntos_fuertes = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'], reverse=True)[:5]
+        puntos_debiles = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'])[:5]
+
+
         data = {
             "media_general": round(media_general, 2),
             "resumen_aciertos": { "aciertos": total_aciertos, "fallos": total_fallos },
             "stats_por_oposicion": [{"oposicion": item['tema__oposicion__nombre'], "media": round(item['media_oposicion'], 2)} for item in stats_oposicion],
-            "historico_resultados": [{"fecha": item.fecha.strftime('%d/%m/%Y'), "nota": round(item.media_test, 2)} for item in historico]
+            "historico_resultados": [{"fecha": item.fecha.strftime('%d/%m/%Y'), "nota": round(item.media_test, 2)} for item in historico],
+            # --- AÑADIMOS LOS NUEVOS DATOS A LA RESPUESTA ---
+            "puntos_fuertes": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_fuertes],
+            "puntos_debiles": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_debiles],
         }
         
         return Response(data)
 
-class RankingSemanalView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        today = date.today()
-        start_of_week = today - timedelta(days=today.weekday())
-        resultados_semanales = ResultadoTest.objects.filter(fecha__gte=start_of_week)
-        ranking_data = resultados_semanales.values('usuario__username').annotate(
-            puntuacion_total=Sum('puntuacion'),
-            preguntas_totales=Sum('total_preguntas')
-        ).filter(preguntas_totales__gt=0)
-        ranking_list = []
-        for item in ranking_data:
-            porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
-            ranking_list.append({
-                'username': item['usuario__username'],
-                'porcentaje_aciertos': round(porcentaje, 2)
-            })
-        ranking_list.sort(key=lambda x: x['porcentaje_aciertos'], reverse=True)
-        user_rank = None
-        for i, user_data in enumerate(ranking_list):
-            if user_data['username'] == request.user.username:
-                user_rank = {
-                    'rank': i + 1,
-                    'username': user_data['username'],
-                    'porcentaje_aciertos': user_data['porcentaje_aciertos']
-                }
-                break
-        response_data = {
-            'podium': ranking_list[:3],
-            'user_rank': user_rank
-        }
-        return Response(response_data)
-
-class AnalisisRefuerzoView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        usuario = request.user
-        resultados = ResultadoTest.objects.filter(usuario=usuario)
-        if not resultados.exists():
-            return Response({"message": "No hay suficientes datos para generar un análisis."}, status=200)
-        stats_tema = resultados.values(
-            'tema__id', 'tema__nombre', 'tema__oposicion__nombre', 'tema__url_fuente_oficial'
-        ).annotate(
-            puntuacion_total=Sum('puntuacion'),
-            preguntas_totales=Sum('total_preguntas')
-        ).filter(preguntas_totales__gt=0)
-        temas_analizados = []
-        for item in stats_tema:
-            porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
-            temas_analizados.append({
-                'tema_id': item['tema__id'],
-                'tema_nombre': item['tema__nombre'],
-                'oposicion_nombre': item['tema__oposicion__nombre'],
-                'url_boe': item['tema__url_fuente_oficial'],
-                'porcentaje_aciertos': round(porcentaje, 2)
-            })
-        dominados = sorted([t for t in temas_analizados if t['porcentaje_aciertos'] > 90], key=lambda x: x['porcentaje_aciertos'], reverse=True)[:5]
-        repasar = sorted([t for t in temas_analizados if 60 <= t['porcentaje_aciertos'] <= 90], key=lambda x: x['porcentaje_aciertos'])[:5]
-        profundizar = sorted([t for t in temas_analizados if t['porcentaje_aciertos'] < 60], key=lambda x: x['porcentaje_aciertos'])[:5]
-        response_data = {
-            'dominados': dominados,
-            'repasar': repasar,
-            'profundizar': profundizar
-        }
-        return Response(response_data)
-
-# --- VISTAS DE PAGOS (STRIPE) ---
-
+# ... (El resto de las vistas de Stripe no cambian)
 stripe.api_key = settings.STRIPE_SECRET_KEY
-
 class CreateCheckoutSessionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request, *args, **kwargs):
@@ -201,7 +126,6 @@ class CreateCheckoutSessionView(APIView):
             return Response({'sessionId': checkout_session.id})
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 class StripeWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
     def post(self, request):
