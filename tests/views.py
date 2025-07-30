@@ -60,7 +60,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(preguntas_corregidas, many=True)
         return Response(serializer.data)
 
-    # --- NUEVA ACCIÓN AÑADIDA PARA EL TEST DE REPASO ---
+    # --- ACCIÓN PARA EL TEST DE REPASO ---
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def repaso(self, request):
         tema_id = self.request.query_params.get('tema')
@@ -92,7 +92,7 @@ class ResultadoTestViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return self.queryset.filter(usuario=self.request.user)
 
-    # --- LÓGICA AÑADIDA PARA GUARDAR ACIERTOS Y FALLOS ---
+    # --- LÓGICA PARA GUARDAR ACIERTOS Y FALLOS ---
     def perform_create(self, serializer):
         resultado = serializer.save(usuario=self.request.user)
         
