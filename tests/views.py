@@ -1,5 +1,7 @@
 import random
 import stripe
+from datetime import date, timedelta
+from django.db.models import Sum
 from django.conf import settings
 from django.db.models import Avg, ExpressionWrapper, FloatField
 from django.contrib.auth import get_user_model
@@ -133,3 +135,34 @@ class StripeWebhookView(APIView):
             except User.DoesNotExist:
                 return Response(status=400)
         return Response(status=200)
+class RankingSemanalView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # Calculamos el inicio de la semana (lunes)
+        today = date.today()
+        start_of_week = today - timedelta(days=today.weekday())
+        
+        # Filtramos los resultados de esta semana
+        resultados_semanales = ResultadoTest.objects.filter(fecha__gte=start_of_week)
+
+        # Agrupamos por usuario y calculamos su puntuación total y preguntas totales
+        ranking_data = resultados_semanales.values('usuario__username').annotate(
+            puntuacion_total=Sum('puntuacion'),
+            preguntas_totales=Sum('total_preguntas')
+        ).filter(preguntas_totales__gt=0) # Evitamos división por cero
+
+        # Calculamos el porcentaje y lo ordenamos
+        ranking_list = []
+        for item in ranking_data:
+            porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
+            ranking_list.append({
+                'username': item['usuario__username'],
+                'porcentaje_aciertos': round(porcentaje, 2)
+            })
+        
+        # Ordenamos la lista por el porcentaje de aciertos (de mayor a menor)
+        ranking_list.sort(key=lambda x: x['porcentaje_aciertos'], reverse=True)
+
+        # Devolvemos solo el top 3
+        return Response(ranking_list[:3])
