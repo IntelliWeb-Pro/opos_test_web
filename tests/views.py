@@ -11,7 +11,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion
+# --- CORRECCIÓN: Aseguramos que 'PreguntaFallada' está importado ---
+from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, PreguntaFallada
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer
@@ -34,6 +35,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Pregunta.objects.all()
 
     def get_serializer_class(self):
+        # Añadimos 'repaso' para que use el serializer simple
         if self.action == 'list' or self.action == 'repaso':
             return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
@@ -58,6 +60,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(preguntas_corregidas, many=True)
         return Response(serializer.data)
 
+    # --- NUEVA ACCIÓN AÑADIDA PARA EL TEST DE REPASO ---
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def repaso(self, request):
         tema_id = self.request.query_params.get('tema')
@@ -89,8 +92,10 @@ class ResultadoTestViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return self.queryset.filter(usuario=self.request.user)
 
+    # --- LÓGICA AÑADIDA PARA GUARDAR ACIERTOS Y FALLOS ---
     def perform_create(self, serializer):
         resultado = serializer.save(usuario=self.request.user)
+        
         ids_preguntas_falladas = self.request.data.get('fallos', [])
         if ids_preguntas_falladas:
             for pregunta_id in ids_preguntas_falladas:
@@ -111,38 +116,20 @@ class ResultadoTestViewSet(viewsets.ModelViewSet):
 
 class EstadisticasUsuarioView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def get(self, request, *args, **kwargs):
         usuario = request.user
         resultados = ResultadoTest.objects.filter(usuario=usuario)
-
-        if not resultados.exists():
-            return Response({"message": "No hay resultados de tests para este usuario."}, status=status.HTTP_200_OK)
-        
-        resumen_total = resultados.aggregate(
-            total_aciertos=Sum('puntuacion'),
-            total_preguntas=Sum('total_preguntas')
-        )
+        if not resultados.exists(): return Response({"message": "No hay resultados de tests para este usuario."}, status=status.HTTP_200_OK)
+        resumen_total = resultados.aggregate(total_aciertos=Sum('puntuacion'), total_preguntas=Sum('total_preguntas'))
         total_aciertos = resumen_total['total_aciertos'] or 0
         total_preguntas_global = resumen_total['total_preguntas'] or 0
         total_fallos = total_preguntas_global - total_aciertos
         media_general = (total_aciertos * 100.0 / total_preguntas_global) if total_preguntas_global > 0 else 0
-
-        stats_oposicion = resultados.values('tema__oposicion__nombre').annotate(
-            media_oposicion=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField())
-        ).order_by('-media_oposicion')
-
-        historico = resultados.order_by('fecha')[:15].annotate(
-            media_test=ExpressionWrapper((F('puntuacion') * 100.0) / F('total_preguntas'), output_field=FloatField())
-        )
-
-        stats_tema = resultados.values('tema__id', 'tema__nombre', 'tema__oposicion__nombre').annotate(
-            media_tema=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField())
-        )
-        
+        stats_oposicion = resultados.values('tema__oposicion__nombre').annotate(media_oposicion=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField())).order_by('-media_oposicion')
+        historico = resultados.order_by('fecha')[:15].annotate(media_test=ExpressionWrapper((F('puntuacion') * 100.0) / F('total_preguntas'), output_field=FloatField()))
+        stats_tema = resultados.values('tema__id', 'tema__nombre', 'tema__oposicion__nombre', 'tema__url_fuente_oficial').annotate(media_tema=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField()))
         puntos_fuertes = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'], reverse=True)[:5]
         puntos_debiles = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'])[:5]
-
         data = {
             "media_general": round(media_general, 2),
             "resumen_aciertos": { "aciertos": total_aciertos, "fallos": total_fallos },
@@ -151,46 +138,30 @@ class EstadisticasUsuarioView(APIView):
             "puntos_fuertes": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_fuertes],
             "puntos_debiles": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_debiles],
         }
-        
         return Response(data)
 
 class RankingSemanalView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def get(self, request, *args, **kwargs):
         today = date.today()
         start_of_week = today - timedelta(days=today.weekday())
         resultados_semanales = ResultadoTest.objects.filter(fecha__gte=start_of_week)
-        ranking_data = resultados_semanales.values('usuario__username').annotate(
-            puntuacion_total=Sum('puntuacion'),
-            preguntas_totales=Sum('total_preguntas')
-        ).filter(preguntas_totales__gt=0)
+        ranking_data = resultados_semanales.values('usuario__username').annotate(puntuacion_total=Sum('puntuacion'), preguntas_totales=Sum('total_preguntas')).filter(preguntas_totales__gt=0)
         ranking_list = []
         for item in ranking_data:
             porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
-            ranking_list.append({
-                'username': item['usuario__username'],
-                'porcentaje_aciertos': round(porcentaje, 2)
-            })
+            ranking_list.append({'username': item['usuario__username'], 'porcentaje_aciertos': round(porcentaje, 2)})
         ranking_list.sort(key=lambda x: x['porcentaje_aciertos'], reverse=True)
         user_rank = None
         for i, user_data in enumerate(ranking_list):
             if user_data['username'] == request.user.username:
-                user_rank = {
-                    'rank': i + 1,
-                    'username': user_data['username'],
-                    'porcentaje_aciertos': user_data['porcentaje_aciertos']
-                }
+                user_rank = {'rank': i + 1, 'username': user_data['username'], 'porcentaje_aciertos': user_data['porcentaje_aciertos']}
                 break
-        response_data = {
-            'podium': ranking_list[:3],
-            'user_rank': user_rank
-        }
+        response_data = {'podium': ranking_list[:3], 'user_rank': user_rank}
         return Response(response_data)
 
 class AnalisisRefuerzoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def get(self, request, *args, **kwargs):
         usuario = request.user
         resultados = ResultadoTest.objects.filter(usuario=usuario)
