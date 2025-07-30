@@ -177,3 +177,49 @@ class RankingSemanalView(APIView):
         }
         
         return Response(response_data)
+class AnalisisRefuerzoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        usuario = request.user
+        
+        resultados = ResultadoTest.objects.filter(usuario=usuario)
+
+        if not resultados.exists():
+            return Response({"message": "No hay suficientes datos para generar un análisis."}, status=200)
+
+        # Agrupamos por tema y calculamos el porcentaje de aciertos
+        stats_tema = resultados.values(
+            'tema__id', 
+            'tema__nombre', 
+            'tema__oposicion__nombre',
+            'tema__url_fuente_oficial' # Incluimos la URL del BOE del tema
+        ).annotate(
+            puntuacion_total=Sum('puntuacion'),
+            preguntas_totales=Sum('total_preguntas')
+        ).filter(preguntas_totales__gt=0)
+
+        temas_analizados = []
+        for item in stats_tema:
+            porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
+            temas_analizados.append({
+                'tema_id': item['tema__id'],
+                'tema_nombre': item['tema__nombre'],
+                'oposicion_nombre': item['tema__oposicion__nombre'],
+                'url_boe': item['tema__url_fuente_oficial'],
+                'porcentaje_aciertos': round(porcentaje, 2)
+            })
+
+        # Clasificamos los temas en las tres categorías
+        dominados = sorted([t for t in temas_analizados if t['porcentaje_aciertos'] > 90], key=lambda x: x['porcentaje_aciertos'], reverse=True)[:5]
+        repasar = sorted([t for t in temas_analizados if 60 <= t['porcentaje_aciertos'] <= 90], key=lambda x: x['porcentaje_aciertos'])[:5]
+        profundizar = sorted([t for t in temas_analizados if t['porcentaje_aciertos'] < 60], key=lambda x: x['porcentaje_aciertos'])[:5]
+
+        response_data = {
+            'dominados': dominados,
+            'repasar': repasar,
+            'profundizar': profundizar
+        }
+        
+        return Response(response_data)
+
