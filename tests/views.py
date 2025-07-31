@@ -207,8 +207,8 @@ class CreateCheckoutSessionView(APIView):
             checkout_session = stripe.checkout.Session.create(
                 line_items=[{'price': price_id, 'quantity': 1}],
                 mode='subscription',
-                success_url='https://opos-test-frontend.vercel.app/pago-exitoso?session_id={CHECKOUT_SESSION_ID}',
-                cancel_url='https://opos-test-frontend.vercel.app/pago-cancelado',
+                success_url='https://www.testestado.es/pago-exitoso?session_id={CHECKOUT_SESSION_ID}',
+                cancel_url='https://www.testestado.es/pago-cancelado',
                 customer_email=request.user.email
             )
             return Response({'sessionId': checkout_session.id})
