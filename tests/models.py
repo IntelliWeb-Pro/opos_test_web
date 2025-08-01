@@ -9,10 +9,7 @@ class Oposicion(models.Model):
 class Tema(models.Model):
     nombre = models.CharField(max_length=255)
     oposicion = models.ForeignKey(Oposicion, on_delete=models.CASCADE, related_name='temas')
-    # --- CAMPO AÑADIDO ---
-    # Guardará la URL del BOE para cada bloque temático
     url_fuente_oficial = models.URLField(blank=True, null=True)
-
     def __str__(self):
         return f"{self.oposicion.nombre} - {self.nombre}"
 
@@ -51,36 +48,26 @@ class ResultadoTest(models.Model):
         return f"Test de {self.usuario.username} en {self.tema.nombre} - {self.puntuacion}/{self.total_preguntas}"
     class Meta:
         ordering = ['-fecha']
+
 class PreguntaFallada(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     pregunta = models.ForeignKey(Pregunta, on_delete=models.CASCADE)
     fecha_fallo = models.DateTimeField(auto_now_add=True)
-
+    class Meta:
+        unique_together = ('usuario', 'pregunta')
     def __str__(self):
         return f"Fallo de {self.usuario.username} en pregunta {self.pregunta.id}"
 
-    class Meta:
-        # Nos aseguramos de que no se guarde el mismo fallo varias veces para el mismo usuario
-        unique_together = ('usuario', 'pregunta')
-# ... (al final del archivo, después de la clase ResultadoTest)
-
 class Post(models.Model):
-    ESTADOS = (
-        ('borrador', 'Borrador'),
-        ('publicado', 'Publicado'),
-    )
+    ESTADOS = (('borrador', 'Borrador'), ('publicado', 'Publicado'))
     titulo = models.CharField(max_length=255)
-    # El 'slug' es la parte de la URL amigable para el SEO, ej: /blog/como-aprobar-auxiliar
     slug = models.SlugField(max_length=255, unique=True, help_text="Versión del título amigable para la URL, sin espacios ni acentos.")
     autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     contenido = models.TextField()
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
     estado = models.CharField(max_length=10, choices=ESTADOS, default='borrador')
-
     class Meta:
         ordering = ['-creado_en']
-
     def __str__(self):
         return self.titulo
-

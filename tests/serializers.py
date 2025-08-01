@@ -1,71 +1,73 @@
-from rest_framework import serializers
-# --- CORRECCIÓN: Añadimos 'Post' a la importación ---
-from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, PreguntaFallada, Post
+from django.db import models
+from django.conf import settings
 
-# --- Serializers Base (se usan dentro de otros) ---
-class TemaSerializer(serializers.ModelSerializer):
+class Oposicion(models.Model):
+    nombre = models.CharField(max_length=255, unique=True)
+    def __str__(self):
+        return self.nombre
+
+class Tema(models.Model):
+    nombre = models.CharField(max_length=255)
+    oposicion = models.ForeignKey(Oposicion, on_delete=models.CASCADE, related_name='temas')
+    url_fuente_oficial = models.URLField(blank=True, null=True)
+    def __str__(self):
+        return f"{self.oposicion.nombre} - {self.nombre}"
+
+class Pregunta(models.Model):
+    tema = models.ForeignKey(Tema, on_delete=models.CASCADE, related_name='preguntas')
+    texto_pregunta = models.TextField()
+    fuente_original = models.CharField(max_length=255, blank=True, null=True)
+    def __str__(self):
+        return self.texto_pregunta[:80] + '...'
+
+class Respuesta(models.Model):
+    pregunta = models.ForeignKey(Pregunta, on_delete=models.CASCADE, related_name='respuestas')
+    texto_respuesta = models.CharField(max_length=1000)
+    es_correcta = models.BooleanField(default=False)
+    texto_justificacion = models.TextField()
+    fuente_justificacion = models.CharField(max_length=255)
+    url_fuente_oficial = models.URLField(blank=True, null=True)
+    def __str__(self):
+        return self.texto_respuesta[:80]
+
+class Suscripcion(models.Model):
+    usuario = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
+    stripe_subscription_id = models.CharField(max_length=255, blank=True, null=True)
+    activa = models.BooleanField(default=False)
+    def __str__(self):
+        return f"{self.usuario.username} - {'Activa' if self.activa else 'Inactiva'}"
+
+class ResultadoTest(models.Model):
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    tema = models.ForeignKey(Tema, on_delete=models.CASCADE)
+    puntuacion = models.IntegerField()
+    total_preguntas = models.IntegerField()
+    fecha = models.DateTimeField(auto_now_add=True)
+    def __str__(self):
+        return f"Test de {self.usuario.username} en {self.tema.nombre} - {self.puntuacion}/{self.total_preguntas}"
     class Meta:
-        model = Tema
-        fields = ['id', 'nombre']
+        ordering = ['-fecha']
 
-class RespuestaSimpleSerializer(serializers.ModelSerializer):
+class PreguntaFallada(models.Model):
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    pregunta = models.ForeignKey(Pregunta, on_delete=models.CASCADE)
+    fecha_fallo = models.DateTimeField(auto_now_add=True)
     class Meta:
-        model = Respuesta
-        fields = ['id', 'texto_respuesta']
+        unique_together = ('usuario', 'pregunta')
+    def __str__(self):
+        return f"Fallo de {self.usuario.username} en pregunta {self.pregunta.id}"
 
-class RespuestaDetalladaSerializer(serializers.ModelSerializer):
+class Post(models.Model):
+    ESTADOS = (('borrador', 'Borrador'), ('publicado', 'Publicado'))
+    titulo = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True, help_text="Versión del título amigable para la URL, sin espacios ni acentos.")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    contenido = models.TextField()
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+    estado = models.CharField(max_length=10, choices=ESTADOS, default='borrador')
     class Meta:
-        model = Respuesta
-        fields = ['id', 'texto_respuesta', 'es_correcta', 'texto_justificacion', 'fuente_justificacion', 'url_fuente_oficial']
-
-# --- Serializers Compuestos (usan los de arriba) ---
-class OposicionSerializer(serializers.ModelSerializer):
-    temas = TemaSerializer(many=True, read_only=True)
-    class Meta:
-        model = Oposicion
-        fields = ['id', 'nombre', 'temas']
-
-class PreguntaSimpleSerializer(serializers.ModelSerializer):
-    respuestas = RespuestaSimpleSerializer(many=True, read_only=True)
-    class Meta:
-        model = Pregunta
-        fields = ['id', 'texto_pregunta', 'respuestas']
-
-class PreguntaDetalladaSerializer(serializers.ModelSerializer):
-    respuestas = RespuestaDetalladaSerializer(many=True, read_only=True)
-    class Meta:
-        model = Pregunta
-        fields = ['id', 'texto_pregunta', 'fuente_original', 'respuestas']
-
-class ResultadoTestSerializer(serializers.ModelSerializer):
-    tema = TemaSerializer(read_only=True)
-    oposicion_nombre = serializers.CharField(source='tema.oposicion.nombre', read_only=True)
-    class Meta:
-        model = ResultadoTest
-        fields = ['id', 'tema', 'puntuacion', 'total_preguntas', 'fecha', 'oposicion_nombre']
-
-class ResultadoTestCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ResultadoTest
-        fields = ['tema', 'puntuacion', 'total_preguntas']
-
-class CustomRegisterSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(max_length=13, min_length=4)
-    def save(self, request):
-        user = super().save(request)
-        return user
-
-# --- Serializers para el Blog ---
-class PostListSerializer(serializers.ModelSerializer):
-    autor_username = serializers.CharField(source='autor.username', read_only=True)
-    
-    class Meta:
-        model = Post
-        fields = ['id', 'titulo', 'slug', 'autor_username', 'creado_en']
-
-class PostDetailSerializer(serializers.ModelSerializer):
-    autor_username = serializers.CharField(source='autor.username', read_only=True)
-
-    class Meta:
-        model = Post
-        fields = ['id', 'titulo', 'slug', 'autor_username', 'contenido', 'creado_en', 'actualizado_en']
+        ordering = ['-creado_en']
+    def __str__(self):
+        return self.titulo
