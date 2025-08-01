@@ -4,7 +4,8 @@ from .views import (
     OposicionViewSet,
     TemaViewSet,
     PreguntaViewSet,
-    ResultadoTestViewSet
+    ResultadoTestViewSet,
+    PostViewSet
 )
 
 # El router crea automáticamente las URLs para Oposiciones, Temas, etc.
@@ -13,6 +14,7 @@ router.register(r'oposiciones', OposicionViewSet, basename='oposicion')
 router.register(r'temas', TemaViewSet, basename='tema')
 router.register(r'preguntas', PreguntaViewSet, basename='pregunta')
 router.register(r'resultados', ResultadoTestViewSet, basename='resultado')
+router.register(r'blog', PostViewSet, basename='post') 
 
 # Este archivo ahora SOLO exporta las rutas del router.
 urlpatterns = [

@@ -12,10 +12,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 # --- CORRECCIÓN: Aseguramos que 'PreguntaFallada' está importado ---
-from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, PreguntaFallada
+from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, PreguntaFallada, Post
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
-    PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer
+    PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
+    PostListSerializer, PostDetailSerializer
 )
 
 # --- VISTAS DE LA API PRINCIPAL (ROUTER) ---
@@ -239,3 +240,17 @@ class StripeWebhookView(APIView):
             except User.DoesNotExist:
                 return Response(status=400)
         return Response(status=200)
+
+class PostViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint para ver los artículos del blog.
+    Solo muestra los posts que están en estado 'publicado'.
+    """
+    queryset = Post.objects.filter(estado='publicado')
+    permission_classes = [permissions.AllowAny] # El blog es público
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return PostListSerializer
+        return PostDetailSerializer
+
