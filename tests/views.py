@@ -18,8 +18,7 @@ from .serializers import (
     PostListSerializer, PostDetailSerializer
 )
 
-# --- VISTAS DE LA API PRINCIPAL (ROUTER) ---
-
+# --- VISTAS DEL ROUTER ---
 class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Oposicion.objects.all()
     serializer_class = OposicionSerializer
@@ -34,8 +33,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
     queryset = Pregunta.objects.all()
     def get_serializer_class(self):
-        if self.action == 'list' or self.action == 'repaso':
-            return PreguntaSimpleSerializer
+        if self.action == 'list' or self.action == 'repaso': return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
     def get_queryset(self):
         queryset = Pregunta.objects.all()
@@ -89,11 +87,10 @@ class PostViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'list': return PostListSerializer
         return PostDetailSerializer
 
-# --- VISTAS ESPECÍFICAS (NO ROUTER) ---
+# --- VISTAS ESPECÍFICAS (FUERA DEL ROUTER) ---
 class EstadisticasUsuarioView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request, *args, **kwargs):
-        # ... (código sin cambios)
         usuario = request.user
         resultados = ResultadoTest.objects.filter(usuario=usuario)
         if not resultados.exists(): return Response({"message": "No hay resultados de tests para este usuario."}, status=status.HTTP_200_OK)
@@ -107,18 +104,10 @@ class EstadisticasUsuarioView(APIView):
         stats_tema = resultados.values('tema__id', 'tema__nombre', 'tema__oposicion__nombre', 'tema__url_fuente_oficial').annotate(media_tema=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField()))
         puntos_fuertes = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'], reverse=True)[:5]
         puntos_debiles = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'])[:5]
-        data = {
-            "media_general": round(media_general, 2),
-            "resumen_aciertos": { "aciertos": total_aciertos, "fallos": total_fallos },
-            "stats_por_oposicion": [{"oposicion": item['tema__oposicion__nombre'], "media": round(item['media_oposicion'], 2)} for item in stats_oposicion],
-            "historico_resultados": [{"fecha": item.fecha.strftime('%d/%m/%Y'), "nota": round(item.media_test, 2)} for item in historico],
-            "puntos_fuertes": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_fuertes],
-            "puntos_debiles": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_debiles],
-        }
+        data = { "media_general": round(media_general, 2), "resumen_aciertos": { "aciertos": total_aciertos, "fallos": total_fallos }, "stats_por_oposicion": [{"oposicion": item['tema__oposicion__nombre'], "media": round(item['media_oposicion'], 2)} for item in stats_oposicion], "historico_resultados": [{"fecha": item.fecha.strftime('%d/%m/%Y'), "nota": round(item.media_test, 2)} for item in historico], "puntos_fuertes": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_fuertes], "puntos_debiles": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_debiles], }
         return Response(data)
 
 class RankingSemanalView(APIView):
-    # ... (código sin cambios)
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request, *args, **kwargs):
         today = date.today()
@@ -139,7 +128,6 @@ class RankingSemanalView(APIView):
         return Response(response_data)
 
 class AnalisisRefuerzoView(APIView):
-    # ... (código sin cambios)
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request, *args, **kwargs):
         usuario = request.user
@@ -158,7 +146,6 @@ class AnalisisRefuerzoView(APIView):
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 class CreateCheckoutSessionView(APIView):
-    # ... (código sin cambios)
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request, *args, **kwargs):
         price_id = os.environ.get('STRIPE_PRICE_ID')
@@ -176,7 +163,6 @@ class CreateCheckoutSessionView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class StripeWebhookView(APIView):
-    # ... (código sin cambios)
     permission_classes = [permissions.AllowAny]
     def post(self, request):
         payload = request.body
