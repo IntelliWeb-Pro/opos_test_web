@@ -107,14 +107,42 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- CORS y CSRF (Permisos para el Frontend) ---
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
-CORS_ALLOWED_ORIGINS = ['http://localhost:3000', FRONTEND_URL]
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', FRONTEND_URL]
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'https://testestado.es',
+    'https://www.testestado.es',
+    FRONTEND_URL
+]
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'https://testestado.es', 
+    'https://www.testestado.es',
+    FRONTEND_URL
+]
+
+# Configuración adicional de CORS
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.testestado\.es$",
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # --- DJANGO REST FRAMEWORK ---
 REST_FRAMEWORK = { 'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',) }
 
 # --- DJ-REST-AUTH Y ALLAUTH ---
-REST_AUTH = {
+REST_AUTH = {           
     'USE_JWT': True,
     'JWT_AUTH_HTTPONLY': False,
     'USER_DETAILS_SERIALIZER': 'dj_rest_auth.serializers.UserDetailsSerializer',
