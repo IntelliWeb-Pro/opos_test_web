@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils.text import slugify
 
 class Oposicion(models.Model):
     nombre = models.CharField(max_length=255, unique=True)
@@ -67,7 +68,14 @@ class Post(models.Model):
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
     estado = models.CharField(max_length=10, choices=ESTADOS, default='borrador')
+    
     class Meta:
         ordering = ['-creado_en']
+    
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.titulo)
+        super().save(*args, **kwargs)
+    
     def __str__(self):
         return self.titulo

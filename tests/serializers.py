@@ -58,12 +58,14 @@ class CustomRegisterSerializer(RegisterSerializer):
 
 class PostListSerializer(serializers.ModelSerializer):
     autor_username = serializers.CharField(source='autor.username', read_only=True)
+    
     class Meta:
         model = Post
         fields = ['id', 'titulo', 'slug', 'autor_username', 'creado_en']
 
 class PostDetailSerializer(serializers.ModelSerializer):
     autor_username = serializers.CharField(source='autor.username', read_only=True)
+    
     class Meta:
         model = Post
         fields = ['id', 'titulo', 'slug', 'autor_username', 'contenido', 'creado_en', 'actualizado_en']

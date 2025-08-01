@@ -83,9 +83,14 @@ class PostViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Post.objects.filter(estado='publicado')
     permission_classes = [permissions.AllowAny]
     lookup_field = 'slug'
+    
     def get_serializer_class(self):
-        if self.action == 'list': return PostListSerializer
+        if self.action == 'list': 
+            return PostListSerializer
         return PostDetailSerializer
+    
+    def get_queryset(self):
+        return Post.objects.filter(estado='publicado').select_related('autor')
 
 # --- VISTAS ESPECÍFICAS (FUERA DEL ROUTER) ---
 class EstadisticasUsuarioView(APIView):
