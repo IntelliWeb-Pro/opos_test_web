@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
-from api.views import ContactoView
+from tests.views import ContactoView
 from tests.views import (
     CreateCheckoutSessionView, 
     StripeWebhookView, 
