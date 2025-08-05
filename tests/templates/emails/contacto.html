@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nuevo Mensaje de Contacto</title>
+</head>
+<body style="font-family: sans-serif; margin: 20px;">
+    <h2 style="color: #007bff;">Nuevo Mensaje de Contacto desde TestEstado.es</h2>
+    <p><strong>Nombre:</strong> {{ nombre }}</p>
+    <p><strong>Email:</strong> {{ email }}</p>
+    {% if telefono %}
+        <p><strong>Teléfono:</strong> {{ telefono }}</p>
+    {% endif %}
+    <p><strong>Asunto:</strong> {{ asunto }}</p>
+    <hr>
+    <p><strong>Mensaje:</strong></p>
+    <p>{{ mensaje|linebreaksbr }}</p>
+</body>
+</html>

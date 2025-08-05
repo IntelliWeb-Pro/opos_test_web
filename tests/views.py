@@ -10,6 +10,8 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
 
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, PreguntaFallada, Post
 from .serializers import (
@@ -191,3 +193,42 @@ class StripeWebhookView(APIView):
             except User.DoesNotExist:
                 return Response(status=400)
         return Response(status=200)
+
+class ContactoView(APIView):
+    permission_classes = [permissions.AllowAny] # Cualquiera puede enviar un mensaje
+
+    def post(self, request, *args, **kwargs):
+        nombre = request.data.get('nombre')
+        email = request.data.get('email')
+        telefono = request.data.get('telefono')
+        asunto = request.data.get('asunto')
+        mensaje = request.data.get('mensaje')
+        
+        if not all([nombre, email, asunto, mensaje]):
+            return Response({"error": "Todos los campos excepto el teléfono son obligatorios."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Preparamos el contenido del email en texto plano y HTML
+            context = {
+                'nombre': nombre,
+                'email': email,
+                'telefono': telefono,
+                'asunto': asunto,
+                'mensaje': mensaje,
+            }
+            email_html_message = render_to_string('emails/contacto.html', context)
+            email_plaintext_message = f"Nuevo mensaje de contacto de {nombre} ({email}):\n\nTeléfono: {telefono}\nAsunto: {asunto}\n\nMensaje:\n{mensaje}"
+
+            send_mail(
+                subject=f'Nuevo Mensaje de Contacto: {asunto}',
+                message=email_plaintext_message,
+                from_email=settings.EMAIL_HOST_USER,
+                recipient_list=['deventerprisedtb@gmail.com'], # Tu email de contacto
+                html_message=email_html_message,
+                fail_silently=False,
+            )
+            return Response({"success": "Mensaje enviado correctamente."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(f"Error al enviar email de contacto: {e}")
+            return Response({"error": "Hubo un problema al enviar tu mensaje. Por favor, inténtalo de nuevo más tarde."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
