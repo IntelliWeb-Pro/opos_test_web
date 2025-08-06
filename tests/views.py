@@ -231,35 +231,47 @@ class CustomRegisterView(RegisterView):
     serializer_class = CustomRegisterSerializer
 
     def create(self, request, *args, **kwargs):
+        print("--- INICIO DE PROCESO DE REGISTRO ---") # LOG 1
+
         response = super().create(request, *args, **kwargs)
+
         if response.status_code == status.HTTP_201_CREATED:
-            # El usuario se ha creado pero está inactivo.
-            # Ahora generamos y enviamos el código de verificación.
-            user_email = response.data.get('email')
-            user = get_user_model().objects.get(email=user_email)
+            print("LOG 2: Usuario creado en la BBDD (inactivo).") # LOG 2
             
-            # Generar código de 6 dígitos
-            codigo = str(random.randint(100000, 999999))
-            
-            # Guardar código en la base de datos
-            CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
-            
-            # Enviar email
             try:
+                user_email = response.data.get('email')
+                user = get_user_model().objects.get(email=user_email)
+                print(f"LOG 3: Usuario '{user.username}' encontrado.") # LOG 3
+
+                codigo = str(random.randint(100000, 999999))
+                CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
+                print(f"LOG 4: Código de verificación '{codigo}' generado para el usuario.") # LOG 4
+
                 context = {'username': user.username, 'codigo': codigo}
                 email_html_message = render_to_string('emails/verificacion_cuenta.html', context)
+                
+                print(f"LOG 5: Intentando enviar email a '{user.email}'...") # LOG 5
+
                 send_mail(
                     subject='Código de Verificación para tu cuenta en TestEstado.es',
-                    message=f'Hola {user.username},\n\nTu código de verificación es: {codigo}\n\nGracias por registrarte.',
-                    from_email=settings.DEFAULT_FROM_EMAIL, # Asegúrate de tener esta variable en settings.py
+                    message=f'Hola {user.username},\n\nTu código de verificación es: {codigo}',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[user.email],
                     html_message=email_html_message,
                     fail_silently=False
                 )
-            except Exception as e:
-                # Opcional: manejar el error si el email no se puede enviar
-                print(f"Error al enviar email de verificación: {e}")
+                
+                print("LOG 6: ¡Email enviado con éxito!") # LOG 6
 
+            except Exception as e:
+                # Este print es crucial. Si hay un error, lo veremos aquí.
+                print(f"--- ¡ERROR DURANTE EL REGISTRO! ---")
+                print(f"ERROR: {e}")
+                # Aunque falle el email, devolvemos la respuesta 201 para que el frontend sepa que el usuario se creó
+                # pero el email no se pudo enviar. El error 500 se evita.
+                return response
+        
+        print("--- FIN DE PROCESO DE REGISTRO ---")
         return response
 
 class VerificarCuentaView(APIView):
