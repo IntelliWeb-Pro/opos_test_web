@@ -1,13 +1,11 @@
 # backend/settings.py
 
-import os  # <-- LA LÍNEA QUE FALTABA
+import os
 from pathlib import Path
 import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-
 
 # --- CONFIGURACIONES DE SEGURIDAD Y ENTORNO ---
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-local-dev-key-for-opos-test')
@@ -60,7 +58,7 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')], # Directorio de plantillas añadido
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -75,14 +73,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 # --- BASE DE DATOS ---
-import dj_database_url
-
-# ASÍ DEBE QUEDAR (PARA PRODUCCIÓN Y DESARROLLO)
-
-# --- BASE DE DATOS ---
-# Se usará la base de datos de Render en producción (si DATABASE_URL está definida)
-# o una base de datos local SQLite para desarrollo.
-
+# Usa la base de datos de Render en producción y una local SQLite para desarrollo.
 if 'DATABASE_URL' in os.environ:
     DATABASES = {
         'default': dj_database_url.config(conn_max_age=600)
@@ -120,6 +111,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # --- CONFIGURACIONES PERSONALIZADAS ---
 # ==============================================================================
 
+# --- CONFIGURACIÓN DE ENVÍO DE CORREO ---
+# Usa Gmail SMTP en producción (Render) y la consola en desarrollo local.
+if 'RENDER' in os.environ:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.gmail.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+    EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
 # --- CORS y CSRF (Permisos para el Frontend) ---
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 CORS_ALLOWED_ORIGINS = [
@@ -135,7 +139,6 @@ CSRF_TRUSTED_ORIGINS = [
     FRONTEND_URL
 ]
 
-# Configuración adicional de CORS
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -157,7 +160,7 @@ CORS_ALLOW_HEADERS = [
 REST_FRAMEWORK = { 'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',) }
 
 # --- DJ-REST-AUTH Y ALLAUTH ---
-REST_AUTH = {           
+REST_AUTH = {         
     'USE_JWT': True,
     'JWT_AUTH_HTTPONLY': False,
     'USER_DETAILS_SERIALIZER': 'dj_rest_auth.serializers.UserDetailsSerializer',
@@ -175,11 +178,9 @@ ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_USERNAME_REQUIRED = True
 ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
-ACCOUNT_EMAIL_VERIFICATION = 'none'
-    
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+ACCOUNT_EMAIL_VERIFICATION = 'none' # Lo manejamos nosotros con nuestro código
 
-# --- CLAVES DE STRIPE (leídas de forma segura de variables de entorno) ---
+# --- CLAVES DE STRIPE ---
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
