@@ -2,29 +2,24 @@ import random
 import stripe
 import os
 from datetime import date, timedelta
-from django.utils import timezone
-from datetime import timedelta
-from dj_rest_auth.registration.views import RegisterView
-from .models import CodigoVerificacion
-from .serializers import CustomRegisterSerializer
+
 from django.conf import settings
 from django.db.models import Avg, Sum, ExpressionWrapper, FloatField, F
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, permissions, status
-from rest_framework.generics import CreateAPIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
+from rest_framework.generics import CreateAPIView
+from django.utils import timezone
 
-
-
-from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, PreguntaFallada, Post
+from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
-    PostListSerializer, PostDetailSerializer
+    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer
 )
 
 # --- VISTAS DEL ROUTER ---
@@ -42,7 +37,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
     queryset = Pregunta.objects.all()
     def get_serializer_class(self):
-        if self.action == 'list' or self.action == 'repaso': return PreguntaSimpleSerializer
+        if self.action == 'list': return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
     def get_queryset(self):
         queryset = Pregunta.objects.all()
@@ -56,18 +51,9 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'])
     def corregir(self, request):
         ids_preguntas = request.data.get('ids', [])
-        if not ids_preguntas: return Response({"error": "No se proporcionaron IDs de preguntas"}, status=400)
+        if not ids_preguntas: return Response({"error": "No se proporcionaron IDs de preguntas"}, status=status.HTTP_400_BAD_REQUEST)
         preguntas_corregidas = Pregunta.objects.filter(id__in=ids_preguntas)
         serializer = self.get_serializer(preguntas_corregidas, many=True)
-        return Response(serializer.data)
-    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
-    def repaso(self, request):
-        tema_id = self.request.query_params.get('tema')
-        if not tema_id: return Response({"error": "Se requiere un ID de tema"}, status=400)
-        preguntas_falladas_ids = PreguntaFallada.objects.filter(usuario=request.user, pregunta__tema__id=tema_id).values_list('pregunta_id', flat=True)
-        if not preguntas_falladas_ids: return Response([])
-        queryset = Pregunta.objects.filter(id__in=preguntas_falladas_ids)
-        serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
 class ResultadoTestViewSet(viewsets.ModelViewSet):
@@ -79,14 +65,7 @@ class ResultadoTestViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return self.queryset.filter(usuario=self.request.user)
     def perform_create(self, serializer):
-        resultado = serializer.save(usuario=self.request.user)
-        ids_preguntas_falladas = self.request.data.get('fallos', [])
-        if ids_preguntas_falladas:
-            for pregunta_id in ids_preguntas_falladas:
-                PreguntaFallada.objects.get_or_create(usuario=self.request.user, pregunta_id=pregunta_id)
-        ids_preguntas_acertadas = self.request.data.get('aciertos', [])
-        if ids_preguntas_acertadas:
-            PreguntaFallada.objects.filter(usuario=self.request.user, pregunta_id__in=ids_preguntas_acertadas).delete()
+        serializer.save(usuario=self.request.user)
 
 class PostViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Post.objects.filter(estado='publicado')
@@ -201,7 +180,6 @@ class StripeWebhookView(APIView):
                 return Response(status=400)
         return Response(status=200)
 
-# --- VISTA DE CONTACTO RESTAURADA ---
 class ContactoView(APIView):
     permission_classes = [permissions.AllowAny]
     def post(self, request, *args, **kwargs):
@@ -219,7 +197,7 @@ class ContactoView(APIView):
             send_mail(
                 subject=f'Nuevo Mensaje de Contacto: {asunto}',
                 message=email_plaintext_message,
-                from_email=settings.EMAIL_HOST_USER,
+                from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=['deventerprisedtb@gmail.com'],
                 html_message=email_html_message,
                 fail_silently=False,
@@ -230,35 +208,17 @@ class ContactoView(APIView):
             return Response({"error": "Hubo un problema al enviar tu mensaje. Por favor, inténtalo de nuevo más tarde."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CustomRegisterView(CreateAPIView):
-    """
-    Vista de registro personalizada que no hereda de dj-rest-auth para tener control total.
-    Crea un usuario inactivo y envía un email de verificación.
-    """
-    serializer_class = CustomRegisterSerializer # Seguimos usando nuestro serializador
+    serializer_class = CustomRegisterSerializer
     permission_classes = [permissions.AllowAny]
-
     def create(self, request, *args, **kwargs):
-        print("--- INICIO DE PROCESO DE REGISTRO (V2) ---")
         serializer = self.get_serializer(data=request.data)
-        
-        # Valida los datos (username, email, contraseñas)
         serializer.is_valid(raise_exception=True)
-        
-        # Llama a nuestro método .save() personalizado en el serializador
-        # que crea el usuario como inactivo.
         user = serializer.save(self.request)
-        print(f"--- LOG: Usuario '{user.username}' creado (inactivo). Procediendo a enviar email.")
-        
-        # --- Generación y envío del código ---
         codigo = str(random.randint(100000, 999999))
         CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
-        print(f"--- LOG: Código de verificación '{codigo}' generado.")
-
         try:
             context = {'username': user.username, 'codigo': codigo}
             email_html_message = render_to_string('emails/verificacion_cuenta.html', context)
-            
-            print(f"--- LOG: Intentando enviar email a '{user.email}'...")
             send_mail(
                 subject='Código de Verificación para tu cuenta en TestEstado.es',
                 message=f'Hola {user.username},\n\nTu código de verificación es: {codigo}',
@@ -267,69 +227,33 @@ class CustomRegisterView(CreateAPIView):
                 html_message=email_html_message,
                 fail_silently=False
             )
-            print("--- LOG: ¡Email enviado con éxito!")
         except Exception as e:
-            print(f"--- ¡ERROR DURANTE EL ENVÍO DE EMAIL! ---")
-            print(f"ERROR: {e}")
-            # Es importante loggear el error, pero el proceso de registro fue exitoso.
-        
-        # Creamos nuestra propia respuesta de éxito, sin tokens.
-        response_data = {
-            "detail": "Registro exitoso. Por favor, revisa tu email para el código de verificación.",
-        }
-        
-        print("--- FIN DE PROCESO DE REGISTRO. Devolviendo respuesta 201. ---")
+            print(f"Error al enviar email de verificación al usuario {user.email}: {e}")
+        response_data = {"detail": "Registro exitoso. Por favor, revisa tu email para el código de verificación."}
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 class VerificarCuentaView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request, *args, **kwargs):
-        print("--- VERIFY LOG 1: Iniciando proceso de verificación.")
         email = request.data.get('email')
         codigo = request.data.get('codigo')
-
         if not email or not codigo:
-            print("--- VERIFY ERROR: Faltan email o código.")
             return Response({'error': 'El email y el código de verificación son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            print(f"--- VERIFY LOG 2: Buscando usuario con email: {email}")
-            user = get_user_model().objects.get(email=email)
-            print(f"--- VERIFY LOG 3: Usuario '{user.username}' encontrado.")
-        except get_user_model().DoesNotExist:
-            print(f"--- VERIFY ERROR: No se encontró usuario con email: {email}")
+        user = get_user_model().objects.filter(email=email, is_active=False).order_by('-date_joined').first()
+        if not user:
+            if get_user_model().objects.filter(email=email, is_active=True).exists():
+                return Response({'error': 'Esta cuenta ya ha sido activada previamente.'}, status=status.HTTP_400_BAD_REQUEST)
             return Response({'error': 'El código o el email son incorrectos.'}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            # Capturamos cualquier otro error (como un fallo de conexión a la BBDD)
-            print(f"--- VERIFY ERROR INESPERADO AL BUSCAR USUARIO: {e}")
-            return Response({'error': 'No se pudo procesar la solicitud. Por favor, inténtalo de nuevo más tarde.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        if user.is_active:
-            print(f"--- VERIFY ERROR: El usuario '{user.username}' ya está activo.")
-            return Response({'error': 'Esta cuenta ya ha sido activada previamente.'}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
-            print(f"--- VERIFY LOG 4: Buscando código '{codigo}' para el usuario '{user.username}'.")
             codigo_verificacion = CodigoVerificacion.objects.get(usuario=user, codigo=codigo)
-            print("--- VERIFY LOG 5: Código de verificación encontrado y correcto.")
-
             if timezone.now() > codigo_verificacion.creado_en + timedelta(minutes=15):
-                print("--- VERIFY ERROR: El código ha expirado.")
                 codigo_verificacion.delete()
                 return Response({'error': 'El código de verificación ha expirado. Por favor, solicita uno nuevo.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            print("--- VERIFY LOG 6: Activando usuario...")
             user.is_active = True
             user.save()
-            print("--- VERIFY LOG 7: Usuario activado. Borrando código...")
             codigo_verificacion.delete()
-            print("--- VERIFY LOG 8: Proceso completado con éxito.")
             return Response({'success': '¡Cuenta activada con éxito! Ya puedes iniciar sesión.'}, status=status.HTTP_200_OK)
-
         except CodigoVerificacion.DoesNotExist:
-            print(f"--- VERIFY ERROR: El código '{codigo}' no coincide para el usuario '{user.username}'.")
             return Response({'error': 'El código o el email son incorrectos.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            print(f"--- VERIFY ERROR INESPERADO AL VERIFICAR CÓDIGO: {e}")
             return Response({'error': 'Ha ocurrido un error inesperado en el servidor.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

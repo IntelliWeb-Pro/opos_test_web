@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from dj_rest_auth.registration.serializers import RegisterSerializer
-from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, Post, PreguntaFallada
+from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, Post
 
 # Serializers Base (se usan dentro de otros)
 class TemaSerializer(serializers.ModelSerializer):

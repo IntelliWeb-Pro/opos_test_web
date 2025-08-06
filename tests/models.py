@@ -50,15 +50,6 @@ class ResultadoTest(models.Model):
     class Meta:
         ordering = ['-fecha']
 
-class PreguntaFallada(models.Model):
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    pregunta = models.ForeignKey(Pregunta, on_delete=models.CASCADE)
-    fecha_fallo = models.DateTimeField(auto_now_add=True)
-    class Meta:
-        unique_together = ('usuario', 'pregunta')
-    def __str__(self):
-        return f"Fallo de {self.usuario.username} en pregunta {self.pregunta.id}"
-
 class Post(models.Model):
     ESTADOS = (('borrador', 'Borrador'), ('publicado', 'Publicado'))
     titulo = models.CharField(max_length=255)
