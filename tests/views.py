@@ -282,9 +282,6 @@ class CustomRegisterView(CreateAPIView):
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 class VerificarCuentaView(APIView):
-    """
-    Vista para verificar una cuenta de usuario con un código de 6 dígitos.
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
@@ -294,10 +291,7 @@ class VerificarCuentaView(APIView):
 
         if not email or not codigo:
             print("--- VERIFY ERROR: Faltan email o código.")
-            return Response(
-                {'error': 'El email y el código de verificación son obligatorios.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'El email y el código de verificación son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             print(f"--- VERIFY LOG 2: Buscando usuario con email: {email}")
@@ -305,17 +299,15 @@ class VerificarCuentaView(APIView):
             print(f"--- VERIFY LOG 3: Usuario '{user.username}' encontrado.")
         except get_user_model().DoesNotExist:
             print(f"--- VERIFY ERROR: No se encontró usuario con email: {email}")
-            return Response(
-                {'error': 'El código o el email son incorrectos.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'El código o el email son incorrectos.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            # Capturamos cualquier otro error (como un fallo de conexión a la BBDD)
+            print(f"--- VERIFY ERROR INESPERADO AL BUSCAR USUARIO: {e}")
+            return Response({'error': 'No se pudo procesar la solicitud. Por favor, inténtalo de nuevo más tarde.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         if user.is_active:
             print(f"--- VERIFY ERROR: El usuario '{user.username}' ya está activo.")
-            return Response(
-                {'error': 'Esta cuenta ya ha sido activada previamente.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'Esta cuenta ya ha sido activada previamente.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             print(f"--- VERIFY LOG 4: Buscando código '{codigo}' para el usuario '{user.username}'.")
@@ -325,33 +317,19 @@ class VerificarCuentaView(APIView):
             if timezone.now() > codigo_verificacion.creado_en + timedelta(minutes=15):
                 print("--- VERIFY ERROR: El código ha expirado.")
                 codigo_verificacion.delete()
-                return Response(
-                    {'error': 'El código de verificación ha expirado. Por favor, solicita uno nuevo.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({'error': 'El código de verificación ha expirado. Por favor, solicita uno nuevo.'}, status=status.HTTP_400_BAD_REQUEST)
 
             print("--- VERIFY LOG 6: Activando usuario...")
             user.is_active = True
             user.save()
             print("--- VERIFY LOG 7: Usuario activado. Borrando código...")
             codigo_verificacion.delete()
-            print("--- VERIFY LOG 8: Código borrado. Proceso completado con éxito.")
-
-            return Response(
-                {'success': '¡Cuenta activada con éxito! Ya puedes iniciar sesión.'},
-                status=status.HTTP_200_OK
-            )
+            print("--- VERIFY LOG 8: Proceso completado con éxito.")
+            return Response({'success': '¡Cuenta activada con éxito! Ya puedes iniciar sesión.'}, status=status.HTTP_200_OK)
 
         except CodigoVerificacion.DoesNotExist:
             print(f"--- VERIFY ERROR: El código '{codigo}' no coincide para el usuario '{user.username}'.")
-            return Response(
-                {'error': 'El código o el email son incorrectos.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'El código o el email son incorrectos.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            # Captura cualquier otro error inesperado
-            print(f"--- VERIFY ERROR INESPERADO: {e}")
-            return Response(
-                {'error': 'Ha ocurrido un error inesperado en el servidor.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            print(f"--- VERIFY ERROR INESPERADO AL VERIFICAR CÓDIGO: {e}")
+            return Response({'error': 'Ha ocurrido un error inesperado en el servidor.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
