@@ -11,11 +11,13 @@ from django.conf import settings
 from django.db.models import Avg, Sum, ExpressionWrapper, FloatField, F
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, permissions, status
+from rest_framework.generics import CreateAPIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
+
 
 
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, PreguntaFallada, Post
@@ -227,52 +229,57 @@ class ContactoView(APIView):
             print(f"Error al enviar email de contacto: {e}")
             return Response({"error": "Hubo un problema al enviar tu mensaje. Por favor, inténtalo de nuevo más tarde."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-class CustomRegisterView(RegisterView):
-    serializer_class = CustomRegisterSerializer
+class CustomRegisterView(CreateAPIView):
+    """
+    Vista de registro personalizada que no hereda de dj-rest-auth para tener control total.
+    Crea un usuario inactivo y envía un email de verificación.
+    """
+    serializer_class = CustomRegisterSerializer # Seguimos usando nuestro serializador
+    permission_classes = [permissions.AllowAny]
 
     def create(self, request, *args, **kwargs):
-        print("--- INICIO DE PROCESO DE REGISTRO ---") # LOG 1
-
-        response = super().create(request, *args, **kwargs)
-
-        if response.status_code == status.HTTP_201_CREATED:
-            print("LOG 2: Usuario creado en la BBDD (inactivo).") # LOG 2
-            
-            try:
-                user_email = response.data.get('email')
-                user = get_user_model().objects.get(email=user_email)
-                print(f"LOG 3: Usuario '{user.username}' encontrado.") # LOG 3
-
-                codigo = str(random.randint(100000, 999999))
-                CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
-                print(f"LOG 4: Código de verificación '{codigo}' generado para el usuario.") # LOG 4
-
-                context = {'username': user.username, 'codigo': codigo}
-                email_html_message = render_to_string('emails/verificacion_cuenta.html', context)
-                
-                print(f"LOG 5: Intentando enviar email a '{user.email}'...") # LOG 5
-
-                send_mail(
-                    subject='Código de Verificación para tu cuenta en TestEstado.es',
-                    message=f'Hola {user.username},\n\nTu código de verificación es: {codigo}',
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[user.email],
-                    html_message=email_html_message,
-                    fail_silently=False
-                )
-                
-                print("LOG 6: ¡Email enviado con éxito!") # LOG 6
-
-            except Exception as e:
-                # Este print es crucial. Si hay un error, lo veremos aquí.
-                print(f"--- ¡ERROR DURANTE EL REGISTRO! ---")
-                print(f"ERROR: {e}")
-                # Aunque falle el email, devolvemos la respuesta 201 para que el frontend sepa que el usuario se creó
-                # pero el email no se pudo enviar. El error 500 se evita.
-                return response
+        print("--- INICIO DE PROCESO DE REGISTRO (V2) ---")
+        serializer = self.get_serializer(data=request.data)
         
-        print("--- FIN DE PROCESO DE REGISTRO ---")
-        return response
+        # Valida los datos (username, email, contraseñas)
+        serializer.is_valid(raise_exception=True)
+        
+        # Llama a nuestro método .save() personalizado en el serializador
+        # que crea el usuario como inactivo.
+        user = serializer.save(self.request)
+        print(f"--- LOG: Usuario '{user.username}' creado (inactivo). Procediendo a enviar email.")
+        
+        # --- Generación y envío del código ---
+        codigo = str(random.randint(100000, 999999))
+        CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
+        print(f"--- LOG: Código de verificación '{codigo}' generado.")
+
+        try:
+            context = {'username': user.username, 'codigo': codigo}
+            email_html_message = render_to_string('emails/verificacion_cuenta.html', context)
+            
+            print(f"--- LOG: Intentando enviar email a '{user.email}'...")
+            send_mail(
+                subject='Código de Verificación para tu cuenta en TestEstado.es',
+                message=f'Hola {user.username},\n\nTu código de verificación es: {codigo}',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                html_message=email_html_message,
+                fail_silently=False
+            )
+            print("--- LOG: ¡Email enviado con éxito!")
+        except Exception as e:
+            print(f"--- ¡ERROR DURANTE EL ENVÍO DE EMAIL! ---")
+            print(f"ERROR: {e}")
+            # Es importante loggear el error, pero el proceso de registro fue exitoso.
+        
+        # Creamos nuestra propia respuesta de éxito, sin tokens.
+        response_data = {
+            "detail": "Registro exitoso. Por favor, revisa tu email para el código de verificación.",
+        }
+        
+        print("--- FIN DE PROCESO DE REGISTRO. Devolviendo respuesta 201. ---")
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 class VerificarCuentaView(APIView):
     """
