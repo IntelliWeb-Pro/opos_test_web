@@ -3,6 +3,7 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
+# Se ha eliminado 'PreguntaFallada' de esta línea de importación
 from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion
 
 # --- 1. ACCIÓN DE BORRADO FORZADO ---
@@ -14,13 +15,11 @@ def force_delete_users(modeladmin, request, queryset):
     """
     deleted_count = 0
     for user in queryset:
-        print(f"--- ADMIN ACTION: Forzando borrado del usuario: {user.username} (ID: {user.id})")
         try:
             # Borramos el usuario. on_delete=CASCADE se encargará del resto.
             user.delete()
             deleted_count += 1
         except Exception as e:
-            print(f"--- ADMIN ACTION ERROR: No se pudo borrar al usuario {user.username}. Error: {e}")
             modeladmin.message_user(request, f"Error al borrar al usuario {user.username}: {e}", messages.ERROR)
     
     if deleted_count > 0:
@@ -28,7 +27,6 @@ def force_delete_users(modeladmin, request, queryset):
 
 # --- 2. ADMIN PERSONALIZADO CON LA NUEVA ACCIÓN ---
 class CustomUserAdmin(BaseUserAdmin):
-    # Añadimos nuestra nueva acción a la lista de acciones disponibles
     actions = [force_delete_users]
 
 # --- 3. TUS CLASES DE ADMIN EXISTENTES (SIN CAMBIOS) ---
@@ -44,9 +42,11 @@ class SuscripcionAdmin(admin.ModelAdmin):
     search_fields = ('usuario__username', 'stripe_customer_id')
 
 # --- 4. REGISTRO DE TODOS LOS MODELOS EN EL ADMIN ---
+# Para el modelo User, damos de baja el admin por defecto y registramos el nuestro
 admin.site.unregister(User)
 admin.site.register(User, CustomUserAdmin)
 
+# El resto de tus registros se quedan igual
 admin.site.register(Oposicion)
 admin.site.register(Tema)
 admin.site.register(Pregunta)
