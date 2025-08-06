@@ -34,7 +34,7 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'dj_rest_auth.registration',
-    'tests',
+    'tests.apps.TestsConfig',
 ]
 
 SITE_ID = 1
