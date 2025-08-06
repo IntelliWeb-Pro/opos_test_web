@@ -5,6 +5,9 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User # Importamos el modelo User
 from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, PreguntaFallada, Post, Suscripcion
 
+# --- PRUEBA DE CARGA: Si ves este mensaje en los logs, significa que Django está leyendo este archivo. ---
+print("--- ADMIN.PY DE 'TESTS' CARGADO CORRECTAMENTE ---")
+
 # --- 1. ADMIN PERSONALIZADO PARA DEPURAR EL BORRADO DE USUARIOS ---
 class CustomUserAdmin(BaseUserAdmin):
     
