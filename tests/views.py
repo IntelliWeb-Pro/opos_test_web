@@ -2,7 +2,11 @@ import random
 import stripe
 import os
 from datetime import date, timedelta
-
+from django.utils import timezone
+from datetime import timedelta
+from dj_rest_auth.registration.views import RegisterView
+from .models import CodigoVerificacion
+from .serializers import CustomRegisterSerializer
 from django.conf import settings
 from django.db.models import Avg, Sum, ExpressionWrapper, FloatField, F
 from django.contrib.auth import get_user_model
@@ -12,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
+
 
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, PreguntaFallada, Post
 from .serializers import (
@@ -221,3 +226,121 @@ class ContactoView(APIView):
         except Exception as e:
             print(f"Error al enviar email de contacto: {e}")
             return Response({"error": "Hubo un problema al enviar tu mensaje. Por favor, inténtalo de nuevo más tarde."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class CustomRegisterView(RegisterView):
+    serializer_class = CustomRegisterSerializer
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED:
+            # El usuario se ha creado pero está inactivo.
+            # Ahora generamos y enviamos el código de verificación.
+            user_email = response.data.get('email')
+            user = get_user_model().objects.get(email=user_email)
+            
+            # Generar código de 6 dígitos
+            codigo = str(random.randint(100000, 999999))
+            
+            # Guardar código en la base de datos
+            CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
+            
+            # Enviar email
+            try:
+                context = {'username': user.username, 'codigo': codigo}
+                email_html_message = render_to_string('emails/verificacion_cuenta.html', context)
+                send_mail(
+                    subject='Código de Verificación para tu cuenta en TestEstado.es',
+                    message=f'Hola {user.username},\n\nTu código de verificación es: {codigo}\n\nGracias por registrarte.',
+                    from_email=settings.DEFAULT_FROM_EMAIL, # Asegúrate de tener esta variable en settings.py
+                    recipient_list=[user.email],
+                    html_message=email_html_message,
+                    fail_silently=False
+                )
+            except Exception as e:
+                # Opcional: manejar el error si el email no se puede enviar
+                print(f"Error al enviar email de verificación: {e}")
+
+        return response
+
+¡Vamos a ello! Este es el Paso 4: Crear la Vista de Verificación (VerificarCuentaView).
+
+Esta es la pieza final de la lógica del backend. Es un "endpoint" o URL que estará esperando a que el frontend le envíe el email del usuario y el código de 6 dígitos que éste ha introducido. Su única misión es validar que el código sea correcto y, si lo es, activar la cuenta.
+
+Dónde Poner el Código
+Al igual que las otras vistas, esta clase irá en tu archivo tests/views.py.
+
+➡️ Acción: Abre tu archivo tests/views.py y añade la siguiente clase al final del todo:
+
+Python
+
+# tests/views.py
+
+# ... (todos tus imports y las otras vistas que ya tienes) ...
+
+# VVV AÑADE ESTA NUEVA CLASE AL FINAL DEL ARCHIVO VVV
+
+class VerificarCuentaView(APIView):
+    """
+    Vista para verificar una cuenta de usuario con un código de 6 dígitos.
+    """
+    permission_classes = [permissions.AllowAny] # Cualquiera puede intentar verificar, no se necesita estar logueado
+
+    def post(self, request, *args, **kwargs):
+        # 1. Recoger los datos que envía el frontend
+        email = request.data.get('email')
+        codigo = request.data.get('codigo')
+
+        # 2. Validar que los datos no estén vacíos
+        if not email or not codigo:
+            return Response(
+                {'error': 'El email y el código de verificación son obligatorios.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 3. Buscar al usuario por su email
+        try:
+            user = get_user_model().objects.get(email=email)
+        except get_user_model().DoesNotExist:
+            # No revelamos si el usuario existe o no por seguridad, damos un error genérico.
+            return Response(
+                {'error': 'El código o el email son incorrectos.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 4. Comprobar si la cuenta ya está activa
+        if user.is_active:
+            return Response(
+                {'error': 'Esta cuenta ya ha sido activada previamente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 5. Buscar el código en la base de datos y validarlo
+        try:
+            codigo_verificacion = CodigoVerificacion.objects.get(usuario=user, codigo=codigo)
+
+            # (Opcional pero recomendado) Comprobar si el código ha expirado
+            # El límite de tiempo se puede ajustar (ej: 10, 15 o 30 minutos)
+            if timezone.now() > codigo_verificacion.creado_en + timedelta(minutes=15):
+                codigo_verificacion.delete() # Borramos el código expirado
+                return Response(
+                    {'error': 'El código de verificación ha expirado. Por favor, solicita uno nuevo.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # --- ¡ÉXITO! ---
+            # 6. Activar la cuenta del usuario y borrar el código usado
+            user.is_active = True
+            user.save()
+            codigo_verificacion.delete()
+
+            return Response(
+                {'success': '¡Cuenta activada con éxito! Ya puedes iniciar sesión.'},
+                status=status.HTTP_200_OK
+            )
+
+        except CodigoVerificacion.DoesNotExist:
+            # El código no coincide con el guardado para ese usuario
+            return Response(
+                {'error': 'El código o el email son incorrectos.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )

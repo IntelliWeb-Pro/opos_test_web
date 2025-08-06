@@ -77,10 +77,23 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # --- BASE DE DATOS ---
 import dj_database_url
 
-DATABASES = {
-    'default': dj_database_url.config(default=os.getenv("DATABASE_URL"))
-}
+# ASÍ DEBE QUEDAR (PARA PRODUCCIÓN Y DESARROLLO)
 
+# --- BASE DE DATOS ---
+# Se usará la base de datos de Render en producción (si DATABASE_URL está definida)
+# o una base de datos local SQLite para desarrollo.
+
+if 'DATABASE_URL' in os.environ:
+    DATABASES = {
+        'default': dj_database_url.config(conn_max_age=600)
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # --- VALIDACIÓN DE CONTRASEÑAS ---
 AUTH_PASSWORD_VALIDATORS = [

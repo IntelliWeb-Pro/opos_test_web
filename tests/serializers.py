@@ -69,3 +69,24 @@ class PostDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = ['id', 'titulo', 'slug', 'autor_username', 'contenido', 'creado_en', 'actualizado_en']
+
+
+class CustomRegisterSerializer(RegisterSerializer):
+    # Puedes añadir campos extra si quieres que se pidan en el registro
+    # Por ejemplo, nombre y apellidos.
+    # first_name = serializers.CharField(required=False)
+    # last_name = serializers.CharField(required=False)
+
+    def save(self, request):
+        # Llama al método save() original de dj-rest-auth
+        user = super().save(request)
+        
+        # Modificamos el usuario ANTES de que se guarde del todo
+        user.is_active = False # ¡La clave! El usuario no podrá hacer login hasta verificar.
+        
+        # Si añadiste campos extra, aquí los guardarías
+        # user.first_name = self.data.get('first_name', '')
+        # user.last_name = self.data.get('last_name', '')
+        
+        user.save()
+        return user

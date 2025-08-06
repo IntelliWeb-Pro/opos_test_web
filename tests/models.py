@@ -79,3 +79,11 @@ class Post(models.Model):
     
     def __str__(self):
         return self.titulo
+#VERIFICACIÓN POR MAIL CON CÓDIGO
+class CodigoVerificacion(models.Model):
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    codigo = models.CharField(max_length=6)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Código para {self.usuario.username}"
