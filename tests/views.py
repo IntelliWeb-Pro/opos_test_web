@@ -262,23 +262,6 @@ class CustomRegisterView(RegisterView):
 
         return response
 
-¡Vamos a ello! Este es el Paso 4: Crear la Vista de Verificación (VerificarCuentaView).
-
-Esta es la pieza final de la lógica del backend. Es un "endpoint" o URL que estará esperando a que el frontend le envíe el email del usuario y el código de 6 dígitos que éste ha introducido. Su única misión es validar que el código sea correcto y, si lo es, activar la cuenta.
-
-Dónde Poner el Código
-Al igual que las otras vistas, esta clase irá en tu archivo tests/views.py.
-
-➡️ Acción: Abre tu archivo tests/views.py y añade la siguiente clase al final del todo:
-
-Python
-
-# tests/views.py
-
-# ... (todos tus imports y las otras vistas que ya tienes) ...
-
-# VVV AÑADE ESTA NUEVA CLASE AL FINAL DEL ARCHIVO VVV
-
 class VerificarCuentaView(APIView):
     """
     Vista para verificar una cuenta de usuario con un código de 6 dígitos.
