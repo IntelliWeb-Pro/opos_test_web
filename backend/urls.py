@@ -9,7 +9,7 @@ from tests.views import (
     StripeWebhookView, 
     EstadisticasUsuarioView, 
     RankingSemanalView,
-    AnalisisRefueroView,
+    AnalisisRefuerzoView, # <-- CORREGIDO: 'Refuerzo' en lugar de 'Refuero'
     ContactoView
 )
 
@@ -27,7 +27,7 @@ urlpatterns = [
     # --- Rutas específicas de la API ---
     path('api/estadisticas/', EstadisticasUsuarioView.as_view(), name='estadisticas-usuario'),
     path('api/ranking/', RankingSemanalView.as_view(), name='ranking-semanal'),
-    path('api/refuerzo/', AnalisisRefueroView.as_view(), name='analisis-refuerzo'),
+    path('api/refuerzo/', AnalisisRefuerzoView.as_view(), name='analisis-refuerzo'), # <-- CORREGIDO
     path('api/create-checkout-session/', CreateCheckoutSessionView.as_view(), name='create-checkout-session'),
     path('api/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'),
     path('api/contacto/', ContactoView.as_view(), name='contacto'),
