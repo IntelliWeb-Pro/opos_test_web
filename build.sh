@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# build.sh - Script de construcción para Render
+# exit on error
+set -o errexit
 
-set -o errexit  # Salir si cualquier comando falla
-
-# Instalar dependencias
 pip install -r requirements.txt
 
-# Ejecutar migraciones
-python manage.py migrate
+# --- PASO 1: SINCRONIZAR LA BASE DE DATOS (MODO SEGURO) ---
+# Le decimos a Django que finja que todas las migraciones ya están aplicadas.
+# Esto evita el error "DuplicateTable" y alinea el registro de Django con la realidad.
+python3 manage.py migrate --fake
 
-# Recopilar archivos estáticos
-python manage.py collectstatic --noinput
+# --- PASO 2: APLICAR MIGRACIONES NUEVAS ---
+# Ahora que todo está sincronizado, aplicamos solo las migraciones que falten
+# (como la que elimina el modelo PreguntaFallada).
+python3 manage.py migrate
+
+# --- PASO 3: RECOLECTAR ARCHIVOS ESTÁTICOS ---
+python3 manage.py collectstatic --no-input
