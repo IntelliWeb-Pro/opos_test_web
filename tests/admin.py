@@ -2,44 +2,32 @@
 
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth.models import User # Importamos el modelo User
+from django.contrib.auth.models import User
 from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, PreguntaFallada, Post, Suscripcion
 
-# --- PRUEBA DE CARGA: Si ves este mensaje en los logs, significa que Django está leyendo este archivo. ---
-print("--- ADMIN.PY DE 'TESTS' CARGADO CORRECTAMENTE ---")
-
-# --- 1. ADMIN PERSONALIZADO PARA DEPURAR EL BORRADO DE USUARIOS ---
+# --- 1. ADMIN PERSONALIZADO CON BORRADO MANUAL DE SUSCRIPCIONES ---
 class CustomUserAdmin(BaseUserAdmin):
     
-    def delete_model(self, request, obj):
-        # Este método es para borrar UN solo usuario desde su página de edición.
-        print(f"--- ADMIN DEBUG (single): Intentando borrar al usuario: {obj.username}")
-        try:
-            super().delete_model(request, obj)
-            print(f"--- ADMIN DEBUG (single): Usuario {obj.username} borrado con éxito.")
-        except Exception as e:
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            print(f"--- ADMIN DEBUG (single): ERROR ATRAPADO AL BORRAR USUARIO ---")
-            print(f"USUARIO: {obj.username}")
-            print(f"ERROR: {type(e).__name__} - {e}")
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            raise e
-
     def delete_queryset(self, request, queryset):
-        # ESTE ES EL MÉTODO NUEVO: Se ejecuta al borrar VARIOS usuarios desde la lista.
-        print(f"--- ADMIN DEBUG (bulk): Intentando borrar {queryset.count()} usuarios.")
-        try:
-            # Intentamos ejecutar el borrado normal del queryset
-            super().delete_queryset(request, queryset)
-            print(f"--- ADMIN DEBUG (bulk): Queryset borrado con éxito.")
-        except Exception as e:
-            # ¡AQUÍ ATRAPAREMOS EL ERROR!
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            print(f"--- ADMIN DEBUG (bulk): ERROR ATRAPADO AL BORRAR USUARIOS ---")
-            print(f"ERROR: {type(e).__name__} - {e}")
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            # Lanzamos el error de nuevo para que el admin muestre un mensaje
-            raise e
+        # Este método se ejecuta al borrar VARIOS usuarios desde la lista.
+        print(f"--- ADMIN DEBUG (bulk): Iniciando borrado de {queryset.count()} usuarios.")
+        
+        # --- PASO CLAVE: Borramos las suscripciones manualmente PRIMERO ---
+        for user in queryset:
+            try:
+                # Buscamos si el usuario tiene una suscripción asociada
+                if hasattr(user, 'suscripcion'):
+                    print(f"--- ADMIN DEBUG (bulk): Borrando suscripción para el usuario: {user.username}")
+                    user.suscripcion.delete()
+            except Exception as e:
+                # Si algo falla aquí, lo veremos en los logs
+                print(f"--- ADMIN DEBUG (bulk): ERROR al borrar suscripción para {user.username}: {e}")
+
+        # Ahora que los objetos más conflictivos han sido eliminados,
+        # dejamos que Django borre los usuarios y el resto de datos en cascada.
+        print("--- ADMIN DEBUG (bulk): Suscripciones eliminadas. Procediendo a borrar usuarios.")
+        super().delete_queryset(request, queryset)
+        print("--- ADMIN DEBUG (bulk): Proceso de borrado completado.")
 
 # --- 2. TUS CLASES DE ADMIN EXISTENTES (SIN CAMBIOS) ---
 class PostAdmin(admin.ModelAdmin):
