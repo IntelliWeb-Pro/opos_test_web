@@ -5,29 +5,33 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, PreguntaFallada, Post, Suscripcion
 
-# --- PRUEBA DE CARGA ---
-print("--- ADMIN.PY DE 'TESTS' CARGADO CORRECTAMENTE ---")
-
-# --- ADMIN PERSONALIZADO CON PRUEBA DE HUMO (NO BORRA NADA) ---
-class CustomUserAdmin(BaseUserAdmin):
+# --- 1. ACCIÓN DE BORRADO FORZADO ---
+@admin.action(description="Forzar borrado de usuarios seleccionados (y sus datos)")
+def force_delete_users(modeladmin, request, queryset):
+    """
+    Acción que borra usuarios y sus datos relacionados de forma controlada
+    para evitar timeouts en el servidor.
+    """
+    deleted_count = 0
+    for user in queryset:
+        print(f"--- ADMIN ACTION: Forzando borrado del usuario: {user.username} (ID: {user.id})")
+        try:
+            # Borramos el usuario. on_delete=CASCADE se encargará del resto.
+            user.delete()
+            deleted_count += 1
+        except Exception as e:
+            print(f"--- ADMIN ACTION ERROR: No se pudo borrar al usuario {user.username}. Error: {e}")
+            modeladmin.message_user(request, f"Error al borrar al usuario {user.username}: {e}", messages.ERROR)
     
-    def delete_queryset(self, request, queryset):
-        # --- PRUEBA DE HUMO ---
-        # Si ves este mensaje en los logs, significa que nuestro código se está ejecutando.
-        # No vamos a borrar nada, solo a confirmar que llegamos hasta aquí.
-        
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print("--- ADMIN SMOKE TEST: ¡El método delete_queryset ha sido llamado! ---")
-        print(f"--- Se iban a borrar {queryset.count()} usuarios. ---")
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    if deleted_count > 0:
+        modeladmin.message_user(request, f"{deleted_count} usuarios han sido borrados con éxito.", messages.SUCCESS)
 
-        # Mostramos un mensaje de éxito en la interfaz del admin para que sepas que funcionó.
-        self.message_user(request, f"Prueba de humo exitosa. Se habrían borrado {queryset.count()} usuarios.", messages.SUCCESS)
-        
-        # IMPORTANTE: No llamamos a super().delete_queryset(request, queryset)
-        # para no interactuar con la base de datos.
+# --- 2. ADMIN PERSONALIZADO CON LA NUEVA ACCIÓN ---
+class CustomUserAdmin(BaseUserAdmin):
+    # Añadimos nuestra nueva acción a la lista de acciones disponibles
+    actions = [force_delete_users]
 
-# --- TUS CLASES DE ADMIN EXISTENTES (SIN CAMBIOS) ---
+# --- 3. TUS CLASES DE ADMIN EXISTENTES (SIN CAMBIOS) ---
 class PostAdmin(admin.ModelAdmin):
     list_display = ('titulo', 'slug', 'autor', 'estado', 'creado_en')
     list_filter = ('estado', 'creado_en')
@@ -39,7 +43,7 @@ class SuscripcionAdmin(admin.ModelAdmin):
     list_filter = ('activa',)
     search_fields = ('usuario__username', 'stripe_customer_id')
 
-# --- REGISTRO DE TODOS LOS MODELOS EN EL ADMIN ---
+# --- 4. REGISTRO DE TODOS LOS MODELOS EN EL ADMIN ---
 admin.site.unregister(User)
 admin.site.register(User, CustomUserAdmin)
 
