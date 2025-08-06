@@ -7,22 +7,35 @@ from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, Pregunt
 
 # --- 1. ADMIN PERSONALIZADO PARA DEPURAR EL BORRADO DE USUARIOS ---
 class CustomUserAdmin(BaseUserAdmin):
+    
     def delete_model(self, request, obj):
-        # Este método se ejecuta cuando borras UN solo usuario desde el admin.
-        print(f"--- ADMIN DEBUG: Intentando borrar al usuario: {obj.username}")
+        # Este método es para borrar UN solo usuario desde su página de edición.
+        print(f"--- ADMIN DEBUG (single): Intentando borrar al usuario: {obj.username}")
         try:
-            # Intentamos ejecutar el borrado normal
             super().delete_model(request, obj)
-            print(f"--- ADMIN DEBUG: Usuario {obj.username} borrado con éxito.")
+            print(f"--- ADMIN DEBUG (single): Usuario {obj.username} borrado con éxito.")
         except Exception as e:
-            # ¡AQUÍ ATRAPAREMOS EL ERROR!
-            # Si algo falla durante el borrado, lo imprimiremos en los logs.
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            print(f"--- ADMIN DEBUG: ERROR ATRAPADO AL BORRAR USUARIO ---")
+            print(f"--- ADMIN DEBUG (single): ERROR ATRAPADO AL BORRAR USUARIO ---")
             print(f"USUARIO: {obj.username}")
             print(f"ERROR: {type(e).__name__} - {e}")
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            # Lanzamos el error de nuevo para que el admin muestre un error
+            raise e
+
+    def delete_queryset(self, request, queryset):
+        # ESTE ES EL MÉTODO NUEVO: Se ejecuta al borrar VARIOS usuarios desde la lista.
+        print(f"--- ADMIN DEBUG (bulk): Intentando borrar {queryset.count()} usuarios.")
+        try:
+            # Intentamos ejecutar el borrado normal del queryset
+            super().delete_queryset(request, queryset)
+            print(f"--- ADMIN DEBUG (bulk): Queryset borrado con éxito.")
+        except Exception as e:
+            # ¡AQUÍ ATRAPAREMOS EL ERROR!
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            print(f"--- ADMIN DEBUG (bulk): ERROR ATRAPADO AL BORRAR USUARIOS ---")
+            print(f"ERROR: {type(e).__name__} - {e}")
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            # Lanzamos el error de nuevo para que el admin muestre un mensaje
             raise e
 
 # --- 2. TUS CLASES DE ADMIN EXISTENTES (SIN CAMBIOS) ---
