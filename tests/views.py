@@ -285,55 +285,57 @@ class VerificarCuentaView(APIView):
     """
     Vista para verificar una cuenta de usuario con un código de 6 dígitos.
     """
-    permission_classes = [permissions.AllowAny] # Cualquiera puede intentar verificar, no se necesita estar logueado
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
-        # 1. Recoger los datos que envía el frontend
+        print("--- VERIFY LOG 1: Iniciando proceso de verificación.")
         email = request.data.get('email')
         codigo = request.data.get('codigo')
 
-        # 2. Validar que los datos no estén vacíos
         if not email or not codigo:
+            print("--- VERIFY ERROR: Faltan email o código.")
             return Response(
                 {'error': 'El email y el código de verificación son obligatorios.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 3. Buscar al usuario por su email
         try:
+            print(f"--- VERIFY LOG 2: Buscando usuario con email: {email}")
             user = get_user_model().objects.get(email=email)
+            print(f"--- VERIFY LOG 3: Usuario '{user.username}' encontrado.")
         except get_user_model().DoesNotExist:
-            # No revelamos si el usuario existe o no por seguridad, damos un error genérico.
+            print(f"--- VERIFY ERROR: No se encontró usuario con email: {email}")
             return Response(
                 {'error': 'El código o el email son incorrectos.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 4. Comprobar si la cuenta ya está activa
         if user.is_active:
+            print(f"--- VERIFY ERROR: El usuario '{user.username}' ya está activo.")
             return Response(
                 {'error': 'Esta cuenta ya ha sido activada previamente.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 5. Buscar el código en la base de datos y validarlo
         try:
+            print(f"--- VERIFY LOG 4: Buscando código '{codigo}' para el usuario '{user.username}'.")
             codigo_verificacion = CodigoVerificacion.objects.get(usuario=user, codigo=codigo)
+            print("--- VERIFY LOG 5: Código de verificación encontrado y correcto.")
 
-            # (Opcional pero recomendado) Comprobar si el código ha expirado
-            # El límite de tiempo se puede ajustar (ej: 10, 15 o 30 minutos)
             if timezone.now() > codigo_verificacion.creado_en + timedelta(minutes=15):
-                codigo_verificacion.delete() # Borramos el código expirado
+                print("--- VERIFY ERROR: El código ha expirado.")
+                codigo_verificacion.delete()
                 return Response(
                     {'error': 'El código de verificación ha expirado. Por favor, solicita uno nuevo.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # --- ¡ÉXITO! ---
-            # 6. Activar la cuenta del usuario y borrar el código usado
+            print("--- VERIFY LOG 6: Activando usuario...")
             user.is_active = True
             user.save()
+            print("--- VERIFY LOG 7: Usuario activado. Borrando código...")
             codigo_verificacion.delete()
+            print("--- VERIFY LOG 8: Código borrado. Proceso completado con éxito.")
 
             return Response(
                 {'success': '¡Cuenta activada con éxito! Ya puedes iniciar sesión.'},
@@ -341,8 +343,15 @@ class VerificarCuentaView(APIView):
             )
 
         except CodigoVerificacion.DoesNotExist:
-            # El código no coincide con el guardado para ese usuario
+            print(f"--- VERIFY ERROR: El código '{codigo}' no coincide para el usuario '{user.username}'.")
             return Response(
                 {'error': 'El código o el email son incorrectos.'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            # Captura cualquier otro error inesperado
+            print(f"--- VERIFY ERROR INESPERADO: {e}")
+            return Response(
+                {'error': 'Ha ocurrido un error inesperado en el servidor.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
