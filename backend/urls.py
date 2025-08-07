@@ -1,10 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
 
-# --- PRUEBA DE CARGA ---
-# Si ves este mensaje en los logs de arranque de Render, significa que este archivo se está ejecutando.
-print("--- URLS.PY: VERSIÓN CON DIAGNÓSTICO DE ALLAUTH CARGADA ---")
-
 # --- Vistas importadas desde la app 'tests' ---
 from tests.views import (
     CustomRegisterView,
@@ -15,7 +11,6 @@ from tests.views import (
     RankingSemanalView,
     AnalisisRefuerzoView,
     ContactoView,
-    CustomPasswordResetView 
 )
 
 # Forzamos la importación del admin para que Django lo registre al arrancar.
@@ -27,17 +22,13 @@ urlpatterns = [
     path('api/auth/registration/', CustomRegisterView.as_view(), name='custom_register'),
     path('api/auth/verify/', VerificarCuentaView.as_view(), name='verify_account'),
     
-    # --- RUTA DE DIAGNÓSTICO AÑADIDA ---
-    # Esta línea intercepta la petición de reseteo y la envía a nuestra vista personalizada.
-    path('api/auth/password/reset/', CustomPasswordResetView.as_view(), name='password_reset'),
+    # --- CAMBIO DE ORDEN ---
+    # 1. Incluimos las URLs de allauth PRIMERO. Esto asegura que la ruta
+    #    'password_reset_confirm' esté disponible para la siguiente línea.
+    path('api/auth/', include('allauth.urls')),
     
-    # Incluimos el resto de URLs de dj-rest-auth (login, logout, etc.)
+    # 2. Incluimos las URLs de dj-rest-auth DESPUÉS.
     path('api/auth/', include('dj_rest_auth.urls')),
-
-    # --- LÍNEA AÑADIDA ---
-    # Incluimos las URLs de allauth. Esto proporciona la URL 'password_reset_confirm'
-    # que dj-rest-auth necesita para generar el enlace del email.
-    path('accounts/', include('allauth.urls')),
 
     # --- Rutas específicas de la API ---
     path('api/estadisticas/', EstadisticasUsuarioView.as_view(), name='estadisticas-usuario'),
