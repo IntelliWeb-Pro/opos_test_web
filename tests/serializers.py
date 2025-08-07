@@ -1,6 +1,12 @@
 from rest_framework import serializers
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from .models import Oposicion, Tema, Pregunta, Respuesta, ResultadoTest, Post
+from django.contrib.auth import get_user_model
+from dj_rest_auth.serializers import PasswordResetSerializer
+from allauth.account.utils import user_pk_to_url_str
+from django.conf import settings
+
+User = get_user_model()
 
 # Serializers Base (se usan dentro de otros)
 class TemaSerializer(serializers.ModelSerializer):
@@ -51,7 +57,22 @@ class ResultadoTestCreateSerializer(serializers.ModelSerializer):
 
 # Serializers de Autenticación y Blog
 class CustomRegisterSerializer(RegisterSerializer):
-    # Sobrescribimos el método save para desactivar al usuario por defecto
+    
+    # --- MÉTODO DE VALIDACIÓN AÑADIDO ---
+    def validate(self, data):
+        # Llama a las validaciones por defecto primero
+        super().validate(data)
+        
+        # Comprobamos si el email ya existe
+        if User.objects.filter(email=data.get('email')).exists():
+            raise serializers.ValidationError({'email': 'Este email ya está en uso'})
+            
+        # Comprobamos si el username ya existe
+        if User.objects.filter(username=data.get('username')).exists():
+            raise serializers.ValidationError({'username': 'Este username ya está en uso'})
+            
+        return data
+
     def save(self, request):
         # Llama al método original para crear el objeto de usuario
         user = super().save(request)
@@ -74,10 +95,6 @@ class PostDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = ['id', 'titulo', 'slug', 'autor_username', 'contenido', 'creado_en', 'actualizado_en']
-
-from dj_rest_auth.serializers import PasswordResetSerializer
-from allauth.account.utils import user_pk_to_url_str
-from django.conf import settings
 
 class CustomPasswordResetSerializer(PasswordResetSerializer):
     def save(self):
