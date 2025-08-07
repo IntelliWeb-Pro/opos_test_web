@@ -298,3 +298,34 @@ class VerificarCuentaView(APIView):
             return Response({'error': 'El código o el email son incorrectos.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': 'Ha ocurrido un error inesperado en el servidor.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class CustomPasswordResetView(PasswordResetView):
+    def post(self, request, *args, **kwargs):
+        # Envolvemos la lógica original en un bloque try/except para cazar el error.
+        try:
+            print("--- PASSWORD RESET: Iniciando proceso de reseteo.", file=sys.stderr, flush=True)
+            
+            # --- BLOQUE DE DIAGNÓSTICO DE EMAIL ---
+            print("--- DIAGNÓSTICO (RESET): CONFIGURACIÓN DE EMAIL ---", file=sys.stderr, flush=True)
+            print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}", file=sys.stderr, flush=True)
+            print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}", file=sys.stderr, flush=True)
+            print(f"EMAIL_HOST_USER: {getattr(settings, 'EMAIL_HOST_USER', 'No definido')}", file=sys.stderr, flush=True)
+            password = getattr(settings, 'EMAIL_HOST_PASSWORD', None)
+            password_exists = "Sí" if password else "No"
+            password_length = len(password) if password else 0
+            print(f"EMAIL_HOST_PASSWORD: Existe={password_exists}, Longitud={password_length}", file=sys.stderr, flush=True)
+            print(f"DEFAULT_FROM_EMAIL: {getattr(settings, 'DEFAULT_FROM_EMAIL', 'No definido')}", file=sys.stderr, flush=True)
+            print("----------------------------------------------------", file=sys.stderr, flush=True)
+
+            print("--- PASSWORD RESET: Llamando a la lógica original para enviar email...", file=sys.stderr, flush=True)
+            response = super().post(request, *args, **kwargs)
+            print("--- PASSWORD RESET: Lógica original completada sin errores.", file=sys.stderr, flush=True)
+            return response
+
+        except Exception as e:
+            # Si algo falla, lo imprimiremos en los logs de forma muy visible.
+            print(f"--- ERROR CRÍTICO EN PASSWORD RESET: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
+            
+            # Devolvemos un error 500, pero con el mensaje de error real.
+            return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
