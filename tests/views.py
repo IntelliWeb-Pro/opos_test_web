@@ -1,3 +1,5 @@
+# tests/views.py
+
 import random
 import stripe
 import os
@@ -15,7 +17,7 @@ from django.template.loader import render_to_string
 from rest_framework.generics import CreateAPIView
 from django.utils import timezone
 
-from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion
+from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
@@ -190,10 +192,25 @@ class ContactoView(APIView):
         mensaje = request.data.get('mensaje')
         if not all([nombre, email, asunto, mensaje]):
             return Response({"error": "Todos los campos excepto el teléfono son obligatorios."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # --- BLOQUE DE DIAGNÓSTICO AÑADIDO ---
+        print("--- DIAGNÓSTICO (CONTACTO): CONFIGURACIÓN DE EMAIL ---")
+        print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}")
+        print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}")
+        print(f"EMAIL_HOST_USER: {getattr(settings, 'EMAIL_HOST_USER', 'No definido')}")
+        password = getattr(settings, 'EMAIL_HOST_PASSWORD', None)
+        password_exists = "Sí" if password else "No"
+        password_length = len(password) if password else 0
+        print(f"EMAIL_HOST_PASSWORD: Existe={password_exists}, Longitud={password_length}")
+        print(f"DEFAULT_FROM_EMAIL: {getattr(settings, 'DEFAULT_FROM_EMAIL', 'No definido')}")
+        print("----------------------------------------------------")
+
         try:
             context = {'nombre': nombre, 'email': email, 'telefono': telefono, 'asunto': asunto, 'mensaje': mensaje}
             email_html_message = render_to_string('emails/contacto.html', context)
             email_plaintext_message = f"Nuevo mensaje de contacto de {nombre} ({email}):\n\nTeléfono: {telefono}\nAsunto: {asunto}\n\nMensaje:\n{mensaje}"
+            
+            print("--- DIAGNÓSTICO (CONTACTO): Intentando enviar email...")
             send_mail(
                 subject=f'Nuevo Mensaje de Contacto: {asunto}',
                 message=email_plaintext_message,
@@ -202,9 +219,10 @@ class ContactoView(APIView):
                 html_message=email_html_message,
                 fail_silently=False,
             )
+            print("--- DIAGNÓSTICO (CONTACTO): La llamada a send_mail se completó sin errores.")
             return Response({"success": "Mensaje enviado correctamente."}, status=status.HTTP_200_OK)
         except Exception as e:
-            print(f"Error al enviar email de contacto: {e}")
+            print(f"--- ERROR ATRAPADO (CONTACTO): {e} ---")
             return Response({"error": "Hubo un problema al enviar tu mensaje. Por favor, inténtalo de nuevo más tarde."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CustomRegisterView(CreateAPIView):
@@ -216,9 +234,24 @@ class CustomRegisterView(CreateAPIView):
         user = serializer.save(self.request)
         codigo = str(random.randint(100000, 999999))
         CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
+        
+        # --- BLOQUE DE DIAGNÓSTICO AÑADIDO ---
+        print("--- DIAGNÓSTICO (REGISTRO): CONFIGURACIÓN DE EMAIL ---")
+        print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}")
+        print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}")
+        print(f"EMAIL_HOST_USER: {getattr(settings, 'EMAIL_HOST_USER', 'No definido')}")
+        password = getattr(settings, 'EMAIL_HOST_PASSWORD', None)
+        password_exists = "Sí" if password else "No"
+        password_length = len(password) if password else 0
+        print(f"EMAIL_HOST_PASSWORD: Existe={password_exists}, Longitud={password_length}")
+        print(f"DEFAULT_FROM_EMAIL: {getattr(settings, 'DEFAULT_FROM_EMAIL', 'No definido')}")
+        print("----------------------------------------------------")
+
         try:
             context = {'username': user.username, 'codigo': codigo}
             email_html_message = render_to_string('emails/verificacion_cuenta.html', context)
+            
+            print("--- DIAGNÓSTICO (REGISTRO): Intentando enviar email...")
             send_mail(
                 subject='Código de Verificación para tu cuenta en TestEstado.es',
                 message=f'Hola {user.username},\n\nTu código de verificación es: {codigo}',
@@ -227,8 +260,10 @@ class CustomRegisterView(CreateAPIView):
                 html_message=email_html_message,
                 fail_silently=False
             )
+            print("--- DIAGNÓSTICO (REGISTRO): La llamada a send_mail se completó sin errores.")
         except Exception as e:
-            print(f"Error al enviar email de verificación al usuario {user.email}: {e}")
+            print(f"--- ERROR ATRAPADO (REGISTRO): {e} ---")
+        
         response_data = {"detail": "Registro exitoso. Por favor, revisa tu email para el código de verificación."}
         return Response(response_data, status=status.HTTP_201_CREATED)
 
