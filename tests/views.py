@@ -3,6 +3,8 @@
 import random
 import stripe
 import os
+import sys
+import traceback
 from datetime import date, timedelta
 
 from django.conf import settings
@@ -194,23 +196,23 @@ class ContactoView(APIView):
             return Response({"error": "Todos los campos excepto el teléfono son obligatorios."}, status=status.HTTP_400_BAD_REQUEST)
         
         # --- BLOQUE DE DIAGNÓSTICO AÑADIDO ---
-        print("--- DIAGNÓSTICO (CONTACTO): CONFIGURACIÓN DE EMAIL ---")
-        print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}")
-        print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}")
-        print(f"EMAIL_HOST_USER: {getattr(settings, 'EMAIL_HOST_USER', 'No definido')}")
+        print("--- DIAGNÓSTICO (CONTACTO): CONFIGURACIÓN DE EMAIL ---", file=sys.stderr, flush=True)
+        print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}", file=sys.stderr, flush=True)
+        print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}", file=sys.stderr, flush=True)
+        print(f"EMAIL_HOST_USER: {getattr(settings, 'EMAIL_HOST_USER', 'No definido')}", file=sys.stderr, flush=True)
         password = getattr(settings, 'EMAIL_HOST_PASSWORD', None)
         password_exists = "Sí" if password else "No"
         password_length = len(password) if password else 0
-        print(f"EMAIL_HOST_PASSWORD: Existe={password_exists}, Longitud={password_length}")
-        print(f"DEFAULT_FROM_EMAIL: {getattr(settings, 'DEFAULT_FROM_EMAIL', 'No definido')}")
-        print("----------------------------------------------------")
+        print(f"EMAIL_HOST_PASSWORD: Existe={password_exists}, Longitud={password_length}", file=sys.stderr, flush=True)
+        print(f"DEFAULT_FROM_EMAIL: {getattr(settings, 'DEFAULT_FROM_EMAIL', 'No definido')}", file=sys.stderr, flush=True)
+        print("----------------------------------------------------", file=sys.stderr, flush=True)
 
         try:
             context = {'nombre': nombre, 'email': email, 'telefono': telefono, 'asunto': asunto, 'mensaje': mensaje}
             email_html_message = render_to_string('emails/contacto.html', context)
             email_plaintext_message = f"Nuevo mensaje de contacto de {nombre} ({email}):\n\nTeléfono: {telefono}\nAsunto: {asunto}\n\nMensaje:\n{mensaje}"
             
-            print("--- DIAGNÓSTICO (CONTACTO): Intentando enviar email...")
+            print("--- DIAGNÓSTICO (CONTACTO): Intentando enviar email...", file=sys.stderr, flush=True)
             send_mail(
                 subject=f'Nuevo Mensaje de Contacto: {asunto}',
                 message=email_plaintext_message,
@@ -219,33 +221,35 @@ class ContactoView(APIView):
                 html_message=email_html_message,
                 fail_silently=False,
             )
-            print("--- DIAGNÓSTICO (CONTACTO): La llamada a send_mail se completó sin errores.")
+            print("--- DIAGNÓSTICO (CONTACTO): La llamada a send_mail se completó sin errores.", file=sys.stderr, flush=True)
             return Response({"success": "Mensaje enviado correctamente."}, status=status.HTTP_200_OK)
         except Exception as e:
-            print(f"--- ERROR ATRAPADO (CONTACTO): {e} ---")
+            print(f"--- ERROR ATRAPADO (CONTACTO): {type(e).__name__} - {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
             return Response({"error": "Hubo un problema al enviar tu mensaje. Por favor, inténtalo de nuevo más tarde."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CustomRegisterView(CreateAPIView):
     serializer_class = CustomRegisterSerializer
     permission_classes = [permissions.AllowAny]
-
     def create(self, request, *args, **kwargs):
-        # Envolvemos todo el proceso en un bloque try/except para cazar cualquier error.
         try:
-            print("--- REGISTRO: Iniciando proceso de registro.", file=sys.stderr, flush=True)
-            
             serializer = self.get_serializer(data=request.data)
-            print("--- REGISTRO: Serializer obtenido.", file=sys.stderr, flush=True)
-
             serializer.is_valid(raise_exception=True)
-            print("--- REGISTRO: Serializer es válido.", file=sys.stderr, flush=True)
-
             user = serializer.save(self.request)
-            print(f"--- REGISTRO: Usuario '{user.username}' guardado como inactivo.", file=sys.stderr, flush=True)
-
             codigo = str(random.randint(100000, 999999))
             CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
-            print(f"--- REGISTRO: Código '{codigo}' generado.", file=sys.stderr, flush=True)
+            
+            # --- BLOQUE DE DIAGNÓSTICO AÑADIDO ---
+            print("--- DIAGNÓSTICO (REGISTRO): CONFIGURACIÓN DE EMAIL ---", file=sys.stderr, flush=True)
+            print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}", file=sys.stderr, flush=True)
+            print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}", file=sys.stderr, flush=True)
+            print(f"EMAIL_HOST_USER: {getattr(settings, 'EMAIL_HOST_USER', 'No definido')}", file=sys.stderr, flush=True)
+            password = getattr(settings, 'EMAIL_HOST_PASSWORD', None)
+            password_exists = "Sí" if password else "No"
+            password_length = len(password) if password else 0
+            print(f"EMAIL_HOST_PASSWORD: Existe={password_exists}, Longitud={password_length}", file=sys.stderr, flush=True)
+            print(f"DEFAULT_FROM_EMAIL: {getattr(settings, 'DEFAULT_FROM_EMAIL', 'No definido')}", file=sys.stderr, flush=True)
+            print("----------------------------------------------------", file=sys.stderr, flush=True)
 
             context = {'username': user.username, 'codigo': codigo}
             email_html_message = render_to_string('emails/verificacion_cuenta.html', context)
@@ -265,13 +269,9 @@ class CustomRegisterView(CreateAPIView):
             return Response(response_data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            # Si algo falla, lo imprimiremos en los logs de forma muy visible.
             print(f"--- ERROR CRÍTICO EN REGISTRO: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
-            
-            # Devolvemos un error 500, pero con el mensaje de error real.
             return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 class VerificarCuentaView(APIView):
     permission_classes = [permissions.AllowAny]
