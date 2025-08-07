@@ -228,30 +228,29 @@ class ContactoView(APIView):
 class CustomRegisterView(CreateAPIView):
     serializer_class = CustomRegisterSerializer
     permission_classes = [permissions.AllowAny]
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save(self.request)
-        codigo = str(random.randint(100000, 999999))
-        CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
-        
-        # --- BLOQUE DE DIAGNÓSTICO AÑADIDO ---
-        print("--- DIAGNÓSTICO (REGISTRO): CONFIGURACIÓN DE EMAIL ---")
-        print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}")
-        print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}")
-        print(f"EMAIL_HOST_USER: {getattr(settings, 'EMAIL_HOST_USER', 'No definido')}")
-        password = getattr(settings, 'EMAIL_HOST_PASSWORD', None)
-        password_exists = "Sí" if password else "No"
-        password_length = len(password) if password else 0
-        print(f"EMAIL_HOST_PASSWORD: Existe={password_exists}, Longitud={password_length}")
-        print(f"DEFAULT_FROM_EMAIL: {getattr(settings, 'DEFAULT_FROM_EMAIL', 'No definido')}")
-        print("----------------------------------------------------")
 
+    def create(self, request, *args, **kwargs):
+        # Envolvemos todo el proceso en un bloque try/except para cazar cualquier error.
         try:
+            print("--- REGISTRO: Iniciando proceso de registro.", file=sys.stderr, flush=True)
+            
+            serializer = self.get_serializer(data=request.data)
+            print("--- REGISTRO: Serializer obtenido.", file=sys.stderr, flush=True)
+
+            serializer.is_valid(raise_exception=True)
+            print("--- REGISTRO: Serializer es válido.", file=sys.stderr, flush=True)
+
+            user = serializer.save(self.request)
+            print(f"--- REGISTRO: Usuario '{user.username}' guardado como inactivo.", file=sys.stderr, flush=True)
+
+            codigo = str(random.randint(100000, 999999))
+            CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
+            print(f"--- REGISTRO: Código '{codigo}' generado.", file=sys.stderr, flush=True)
+
             context = {'username': user.username, 'codigo': codigo}
             email_html_message = render_to_string('emails/verificacion_cuenta.html', context)
             
-            print("--- DIAGNÓSTICO (REGISTRO): Intentando enviar email...")
+            print(f"--- REGISTRO: Intentando enviar email a '{user.email}'...", file=sys.stderr, flush=True)
             send_mail(
                 subject='Código de Verificación para tu cuenta en TestEstado.es',
                 message=f'Hola {user.username},\n\nTu código de verificación es: {codigo}',
@@ -260,12 +259,19 @@ class CustomRegisterView(CreateAPIView):
                 html_message=email_html_message,
                 fail_silently=False
             )
-            print("--- DIAGNÓSTICO (REGISTRO): La llamada a send_mail se completó sin errores.")
+            print("--- REGISTRO: Email enviado con éxito.", file=sys.stderr, flush=True)
+            
+            response_data = {"detail": "Registro exitoso. Por favor, revisa tu email para el código de verificación."}
+            return Response(response_data, status=status.HTTP_201_CREATED)
+
         except Exception as e:
-            print(f"--- ERROR ATRAPADO (REGISTRO): {e} ---")
-        
-        response_data = {"detail": "Registro exitoso. Por favor, revisa tu email para el código de verificación."}
-        return Response(response_data, status=status.HTTP_201_CREATED)
+            # Si algo falla, lo imprimiremos en los logs de forma muy visible.
+            print(f"--- ERROR CRÍTICO EN REGISTRO: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
+            
+            # Devolvemos un error 500, pero con el mensaje de error real.
+            return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class VerificarCuentaView(APIView):
     permission_classes = [permissions.AllowAny]
