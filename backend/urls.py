@@ -1,6 +1,10 @@
 from django.contrib import admin
 from django.urls import path, include
 
+# --- PRUEBA DE CARGA ---
+# Si ves este mensaje en los logs de arranque de Render, significa que este archivo se está ejecutando.
+print("--- URLS.PY: VERSIÓN CON DIAGNÓSTICO DE ALLAUTH CARGADA ---")
+
 # --- Vistas importadas desde la app 'tests' ---
 from tests.views import (
     CustomRegisterView,
