@@ -11,7 +11,7 @@ from tests.views import (
     RankingSemanalView,
     AnalisisRefuerzoView,
     ContactoView,
-    CustomPasswordResetView # <-- Importamos la nueva vista
+    CustomPasswordResetView 
 )
 
 # Forzamos la importación del admin para que Django lo registre al arrancar.
@@ -29,6 +29,11 @@ urlpatterns = [
     
     # Incluimos el resto de URLs de dj-rest-auth (login, logout, etc.)
     path('api/auth/', include('dj_rest_auth.urls')),
+
+    # --- LÍNEA AÑADIDA ---
+    # Incluimos las URLs de allauth. Esto proporciona la URL 'password_reset_confirm'
+    # que dj-rest-auth necesita para generar el enlace del email.
+    path('accounts/', include('allauth.urls')),
 
     # --- Rutas específicas de la API ---
     path('api/estadisticas/', EstadisticasUsuarioView.as_view(), name='estadisticas-usuario'),
