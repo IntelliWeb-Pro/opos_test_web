@@ -19,12 +19,12 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from rest_framework.generics import CreateAPIView
 from django.utils import timezone
-
+from dj_rest_auth.views import PasswordResetView
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
-    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, PasswordResetView
+    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer
 )
 
 # --- VISTAS DEL ROUTER ---
