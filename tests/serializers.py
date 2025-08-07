@@ -51,9 +51,14 @@ class ResultadoTestCreateSerializer(serializers.ModelSerializer):
 
 # Serializers de Autenticación y Blog
 class CustomRegisterSerializer(RegisterSerializer):
-    username = serializers.CharField(max_length=13, min_length=4)
+    # Sobrescribimos el método save para desactivar al usuario por defecto
     def save(self, request):
+        # Llama al método original para crear el objeto de usuario
         user = super().save(request)
+        # La clave: marcamos al usuario como inactivo
+        user.is_active = False
+        # Guardamos el cambio en la base de datos
+        user.save()
         return user
 
 class PostListSerializer(serializers.ModelSerializer):
@@ -69,22 +74,3 @@ class PostDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = ['id', 'titulo', 'slug', 'autor_username', 'contenido', 'creado_en', 'actualizado_en']
-
-
-class CustomRegisterSerializer(RegisterSerializer):
-    def save(self, request):
-        print("--- SERIALIZER LOG 1: Entrando en el método save() del serializador.")
-        
-        # Llama al método save() original de dj-rest-auth para crear el objeto de usuario
-        user = super().save(request)
-        print(f"--- SERIALIZER LOG 2: Usuario '{user.username}' creado en memoria por super().save().")
-        
-        # Modificamos el usuario ANTES de que se guarde del todo
-        user.is_active = False
-        print("--- SERIALIZER LOG 3: 'is_active' establecido en False.")
-        
-        # Guardamos el cambio final en la base de datos
-        user.save()
-        print("--- SERIALIZER LOG 4: Cambios guardados en la BBDD. Saliendo del serializador.")
-        
-        return user
