@@ -24,7 +24,7 @@ from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post,
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
-    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, CustomPasswordResetView
+    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, PasswordResetView
 )
 
 # --- VISTAS DEL ROUTER ---
