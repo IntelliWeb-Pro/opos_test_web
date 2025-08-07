@@ -74,3 +74,29 @@ class PostDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = ['id', 'titulo', 'slug', 'autor_username', 'contenido', 'creado_en', 'actualizado_en']
+
+from dj_rest_auth.serializers import PasswordResetSerializer
+from allauth.account.utils import user_pk_to_url_str
+from django.conf import settings
+
+class CustomPasswordResetSerializer(PasswordResetSerializer):
+    def save(self):
+        request = self.context.get('request')
+        # Llama al método original de la librería, pero sobreescribiendo el generador de URL
+        opts = {
+            'use_https': request.is_secure(),
+            'from_email': getattr(settings, 'DEFAULT_FROM_EMAIL'),
+            'request': request,
+            'email_template_name': 'account/email/password_reset_key_message.html',
+            'url_generator': self.custom_url_generator,
+        }
+        self.reset_form.save(**opts)
+
+    def custom_url_generator(self, request, user, temp_key):
+        # Construye la URL del frontend
+        uid = user_pk_to_url_str(user)
+        token = temp_key
+        
+        # Asegúrate de que esta URL coincide con la ruta de tu frontend
+        frontend_url = f"https://www.testestado.es/password-reset/{uid}/{token}/"
+        return frontend_url
