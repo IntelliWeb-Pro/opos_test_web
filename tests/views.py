@@ -5,6 +5,7 @@ import stripe
 import os
 import sys
 import traceback
+import tests.admin
 from datetime import date, timedelta
 
 from django.conf import settings
@@ -23,7 +24,7 @@ from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post,
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
-    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer
+    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, CustomPasswordResetView
 )
 
 # --- VISTAS DEL ROUTER ---
