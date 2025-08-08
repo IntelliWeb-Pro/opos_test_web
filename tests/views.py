@@ -32,6 +32,8 @@ class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Oposicion.objects.all()
     serializer_class = OposicionSerializer
     permission_classes = [permissions.AllowAny]
+    # --- CAMPO DE BÚSQUEDA ACTUALIZADO ---
+    lookup_field = 'slug'
 
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Tema.objects.all()

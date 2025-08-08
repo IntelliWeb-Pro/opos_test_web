@@ -28,7 +28,8 @@ class OposicionSerializer(serializers.ModelSerializer):
     bloques = BloqueSerializer(many=True, read_only=True)
     class Meta:
         model = Oposicion
-        fields = ['id', 'nombre', 'bloques']
+        # --- CAMPO SLUG AÑADIDO ---
+        fields = ['id', 'nombre', 'slug', 'bloques']
 
 
 # --- El resto de tus serializers no necesitan cambios ---
