@@ -22,18 +22,30 @@ from dj_rest_auth.views import PasswordResetView
 
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta
 from .serializers import (
-    OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
+    OposicionSerializer, OposicionListSerializer, # Se importa el nuevo serializer ligero
+    TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
     PostListSerializer, PostDetailSerializer, CustomRegisterSerializer
 )
 
 # --- VISTAS DEL ROUTER ---
 class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
-    # --- CAMBIO CLAVE: Consulta optimizada con prefetch_related ---
-    queryset = Oposicion.objects.prefetch_related('bloques__temas').all()
-    serializer_class = OposicionSerializer
+    queryset = Oposicion.objects.all()
     permission_classes = [permissions.AllowAny]
     lookup_field = 'slug'
+
+    # --- MÉTODO MODIFICADO PARA SER MÁS INTELIGENTE ---
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return OposicionListSerializer # Usa el serializer ligero para la lista
+        return OposicionSerializer # Usa el serializer completo para el detalle
+
+    def get_queryset(self):
+        # Solo hacemos la consulta pesada cuando se pide el detalle de una oposición
+        if self.action == 'retrieve':
+            return Oposicion.objects.prefetch_related('bloques__temas').all()
+        return super().get_queryset()
+
 
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Tema.objects.all()
@@ -83,16 +95,6 @@ class PostViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'list': 
             return PostListSerializer
         return PostDetailSerializer
-    
-    def list(self, request, *args, **kwargs):
-        try:
-            queryset = self.get_queryset()
-            num_posts = len(list(queryset))
-            serializer = self.get_serializer(queryset, many=True)
-            serialized_data = serializer.data
-            return Response(serialized_data)
-        except Exception as e:
-            return Response({"error": "Error interno del servidor al cargar el blog."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # --- VISTAS ESPECÍFICAS (FUERA DEL ROUTER) ---
 class EstadisticasUsuarioView(APIView):

@@ -2,7 +2,6 @@
 
 from rest_framework import serializers
 from dj_rest_auth.registration.serializers import RegisterSerializer
-# --- CAMBIO CLAVE: Se importa User desde el lugar correcto ---
 from django.contrib.auth import get_user_model
 from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post
 from dj_rest_auth.serializers import PasswordResetSerializer
@@ -24,11 +23,17 @@ class BloqueSerializer(serializers.ModelSerializer):
         model = Bloque
         fields = ['id', 'numero', 'nombre', 'temas']
 
+# --- NUEVO SERIALIZER AÑADIDO (VERSIÓN LIGERA) ---
+class OposicionListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Oposicion
+        fields = ['id', 'nombre', 'slug']
+
+# Serializer completo para la vista de detalle
 class OposicionSerializer(serializers.ModelSerializer):
     bloques = BloqueSerializer(many=True, read_only=True)
     class Meta:
         model = Oposicion
-        # --- CAMPO SLUG AÑADIDO ---
         fields = ['id', 'nombre', 'slug', 'bloques']
 
 
