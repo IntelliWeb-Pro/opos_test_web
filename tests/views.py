@@ -22,7 +22,7 @@ from dj_rest_auth.views import PasswordResetView
 
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta
 from .serializers import (
-    OposicionSerializer, OposicionListSerializer, # Se importa el nuevo serializer ligero
+    OposicionSerializer, OposicionListSerializer,
     TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
     PostListSerializer, PostDetailSerializer, CustomRegisterSerializer
@@ -34,18 +34,19 @@ class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
     lookup_field = 'slug'
 
-    # --- MÉTODO MODIFICADO PARA SER MÁS INTELIGENTE ---
     def get_serializer_class(self):
         if self.action == 'list':
-            return OposicionListSerializer # Usa el serializer ligero para la lista
-        return OposicionSerializer # Usa el serializer completo para el detalle
+            return OposicionListSerializer
+        return OposicionSerializer
 
     def get_queryset(self):
-        # Solo hacemos la consulta pesada cuando se pide el detalle de una oposición
         if self.action == 'retrieve':
             return Oposicion.objects.prefetch_related('bloques__temas').all()
         return super().get_queryset()
 
+    def list(self, request, *args, **kwargs):
+        print("--- OPOSICIONES: Iniciando listado ---", file=sys.stderr, flush=True)
+        return super().list(request, *args, **kwargs)
 
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Tema.objects.all()
@@ -95,6 +96,10 @@ class PostViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'list': 
             return PostListSerializer
         return PostDetailSerializer
+
+    def list(self, request, *args, **kwargs):
+        print("--- BLOG: Iniciando listado de posts ---", file=sys.stderr, flush=True)
+        return super().list(request, *args, **kwargs)
 
 # --- VISTAS ESPECÍFICAS (FUERA DEL ROUTER) ---
 class EstadisticasUsuarioView(APIView):
