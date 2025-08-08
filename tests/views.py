@@ -44,7 +44,6 @@ class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
             return Oposicion.objects.prefetch_related('bloques__temas').all()
         return super().get_queryset()
 
-    # --- MÉTODO 'list' SOBREESCRITO CON DIAGNÓSTICO DETALLADO ---
     def list(self, request, *args, **kwargs):
         print("--- OPOSICIONES: Iniciando listado ---", file=sys.stderr, flush=True)
         try:
@@ -130,21 +129,53 @@ class PostViewSet(viewsets.ReadOnlyModelViewSet):
 class EstadisticasUsuarioView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request, *args, **kwargs):
-        usuario = request.user
-        resultados = ResultadoTest.objects.filter(usuario=usuario)
-        if not resultados.exists(): return Response({"message": "No hay resultados de tests para este usuario."}, status=status.HTTP_200_OK)
-        resumen_total = resultados.aggregate(total_aciertos=Sum('puntuacion'), total_preguntas=Sum('total_preguntas'))
-        total_aciertos = resumen_total['total_aciertos'] or 0
-        total_preguntas_global = resumen_total['total_preguntas'] or 0
-        total_fallos = total_preguntas_global - total_aciertos
-        media_general = (total_aciertos * 100.0 / total_preguntas_global) if total_preguntas_global > 0 else 0
-        stats_oposicion = resultados.values('tema__oposicion__nombre').annotate(media_oposicion=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField())).order_by('-media_oposicion')
-        historico = resultados.order_by('fecha')[:15].annotate(media_test=ExpressionWrapper((F('puntuacion') * 100.0) / F('total_preguntas'), output_field=FloatField()))
-        stats_tema = resultados.values('tema__id', 'tema__nombre', 'tema__oposicion__nombre', 'tema__url_fuente_oficial').annotate(media_tema=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField()))
-        puntos_fuertes = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'], reverse=True)[:5]
-        puntos_debiles = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'])[:5]
-        data = { "media_general": round(media_general, 2), "resumen_aciertos": { "aciertos": total_aciertos, "fallos": total_fallos }, "stats_por_oposicion": [{"oposicion": item['tema__oposicion__nombre'], "media": round(item['media_oposicion'], 2)} for item in stats_oposicion], "historico_resultados": [{"fecha": item.fecha.strftime('%d/%m/%Y'), "nota": round(item.media_test, 2)} for item in historico], "puntos_fuertes": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_fuertes], "puntos_debiles": [{"tema_id": item['tema__id'], "tema": item['tema__nombre'], "oposicion": item['tema__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_debiles], }
-        return Response(data)
+        try:
+            print("--- STATS: Iniciando cálculo de estadísticas ---", file=sys.stderr, flush=True)
+            usuario = request.user
+            
+            print("--- STATS: Obteniendo resultados del usuario...", file=sys.stderr, flush=True)
+            resultados = ResultadoTest.objects.filter(usuario=usuario)
+            if not resultados.exists(): 
+                print("--- STATS: No se encontraron resultados.", file=sys.stderr, flush=True)
+                return Response({"message": "No hay resultados de tests para este usuario."}, status=status.HTTP_200_OK)
+
+            print("--- STATS: Calculando resumen total...", file=sys.stderr, flush=True)
+            resumen_total = resultados.aggregate(total_aciertos=Sum('puntuacion'), total_preguntas=Sum('total_preguntas'))
+            total_aciertos = resumen_total['total_aciertos'] or 0
+            total_preguntas_global = resumen_total['total_preguntas'] or 0
+            total_fallos = total_preguntas_global - total_aciertos
+            media_general = (total_aciertos * 100.0 / total_preguntas_global) if total_preguntas_global > 0 else 0
+
+            print("--- STATS: Calculando estadísticas por oposición...", file=sys.stderr, flush=True)
+            stats_oposicion = resultados.values('tema__bloque__oposicion__nombre').annotate(media_oposicion=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField())).order_by('-media_oposicion')
+
+            print("--- STATS: Calculando histórico...", file=sys.stderr, flush=True)
+            historico = resultados.order_by('fecha')[:15].annotate(media_test=ExpressionWrapper((F('puntuacion') * 100.0) / F('total_preguntas'), output_field=FloatField()))
+
+            print("--- STATS: Calculando estadísticas por tema...", file=sys.stderr, flush=True)
+            stats_tema = resultados.values('tema__id', 'tema__nombre_oficial', 'tema__bloque__oposicion__nombre', 'tema__url_fuente_oficial').annotate(media_tema=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField()))
+
+            print("--- STATS: Calculando puntos fuertes y débiles...", file=sys.stderr, flush=True)
+            puntos_fuertes = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'], reverse=True)[:5]
+            puntos_debiles = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'])[:5]
+            
+            print("--- STATS: Construyendo respuesta final...", file=sys.stderr, flush=True)
+            data = {
+                "media_general": round(media_general, 2),
+                "resumen_aciertos": { "aciertos": total_aciertos, "fallos": total_fallos },
+                "stats_por_oposicion": [{"oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_oposicion'], 2)} for item in stats_oposicion],
+                "historico_resultados": [{"fecha": item.fecha.strftime('%d/%m/%Y'), "nota": round(item.media_test, 2)} for item in historico],
+                "puntos_fuertes": [{"tema_id": item['tema__id'], "tema": item['tema__nombre_oficial'], "oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_fuertes],
+                "puntos_debiles": [{"tema_id": item['tema__id'], "tema": item['tema__nombre_oficial'], "oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_debiles],
+            }
+            
+            print("--- STATS: Proceso completado con éxito. ---", file=sys.stderr, flush=True)
+            return Response(data)
+
+        except Exception as e:
+            print(f"--- ERROR CRÍTICO EN ESTADÍSTICAS: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
+            return Response({"error": "Error interno del servidor al calcular las estadísticas."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class RankingSemanalView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -172,11 +203,11 @@ class AnalisisRefuerzoView(APIView):
         usuario = request.user
         resultados = ResultadoTest.objects.filter(usuario=usuario)
         if not resultados.exists(): return Response({"message": "No hay suficientes datos para generar un análisis."}, status=200)
-        stats_tema = resultados.values('tema__id', 'tema__nombre', 'tema__oposicion__nombre', 'tema__url_fuente_oficial').annotate(puntuacion_total=Sum('puntuacion'), preguntas_totales=Sum('total_preguntas')).filter(preguntas_totales__gt=0)
+        stats_tema = resultados.values('tema__id', 'tema__nombre_oficial', 'tema__bloque__oposicion__nombre', 'tema__url_fuente_oficial').annotate(puntuacion_total=Sum('puntuacion'), preguntas_totales=Sum('total_preguntas')).filter(preguntas_totales__gt=0)
         temas_analizados = []
         for item in stats_tema:
             porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
-            temas_analizados.append({'tema_id': item['tema__id'], 'tema_nombre': item['tema__nombre'], 'oposicion_nombre': item['tema__oposicion__nombre'], 'url_boe': item['tema__url_fuente_oficial'], 'porcentaje_aciertos': round(porcentaje, 2)})
+            temas_analizados.append({'tema_id': item['tema__id'], 'tema_nombre': item['tema__nombre_oficial'], 'oposicion_nombre': item['tema__bloque__oposicion__nombre'], 'url_boe': item['tema__url_fuente_oficial'], 'porcentaje_aciertos': round(porcentaje, 2)})
         dominados = sorted([t for t in temas_analizados if t['porcentaje_aciertos'] > 90], key=lambda x: x['porcentaje_aciertos'], reverse=True)[:5]
         repasar = sorted([t for t in temas_analizados if 60 <= t['porcentaje_aciertos'] <= 90], key=lambda x: x['porcentaje_aciertos'])[:5]
         profundizar = sorted([t for t in temas_analizados if t['porcentaje_aciertos'] < 60], key=lambda x: x['porcentaje_aciertos'])[:5]
