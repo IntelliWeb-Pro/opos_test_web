@@ -29,10 +29,10 @@ from .serializers import (
 
 # --- VISTAS DEL ROUTER ---
 class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Oposicion.objects.all()
+    # --- CAMBIO CLAVE: Consulta optimizada con prefetch_related ---
+    queryset = Oposicion.objects.prefetch_related('bloques__temas').all()
     serializer_class = OposicionSerializer
     permission_classes = [permissions.AllowAny]
-    # --- CAMPO DE BÚSQUEDA ACTUALIZADO ---
     lookup_field = 'slug'
 
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
@@ -75,7 +75,7 @@ class ResultadoTestViewSet(viewsets.ModelViewSet):
         serializer.save(usuario=self.request.user)
 
 class PostViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Post.objects.filter(estado='publicado')
+    queryset = Post.objects.filter(estado='publicado').select_related('autor')
     permission_classes = [permissions.AllowAny]
     lookup_field = 'slug'
     
@@ -84,8 +84,15 @@ class PostViewSet(viewsets.ReadOnlyModelViewSet):
             return PostListSerializer
         return PostDetailSerializer
     
-    def get_queryset(self):
-        return Post.objects.filter(estado='publicado').select_related('autor')
+    def list(self, request, *args, **kwargs):
+        try:
+            queryset = self.get_queryset()
+            num_posts = len(list(queryset))
+            serializer = self.get_serializer(queryset, many=True)
+            serialized_data = serializer.data
+            return Response(serialized_data)
+        except Exception as e:
+            return Response({"error": "Error interno del servidor al cargar el blog."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # --- VISTAS ESPECÍFICAS (FUERA DEL ROUTER) ---
 class EstadisticasUsuarioView(APIView):
@@ -198,7 +205,6 @@ class ContactoView(APIView):
         if not all([nombre, email, asunto, mensaje]):
             return Response({"error": "Todos los campos excepto el teléfono son obligatorios."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # --- BLOQUE DE DIAGNÓSTICO AÑADIDO ---
         print("--- DIAGNÓSTICO (CONTACTO): CONFIGURACIÓN DE EMAIL ---", file=sys.stderr, flush=True)
         print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}", file=sys.stderr, flush=True)
         print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}", file=sys.stderr, flush=True)
@@ -242,7 +248,6 @@ class CustomRegisterView(CreateAPIView):
             codigo = str(random.randint(100000, 999999))
             CodigoVerificacion.objects.create(usuario=user, codigo=codigo)
             
-            # --- BLOQUE DE DIAGNÓSTICO AÑADIDO ---
             print("--- DIAGNÓSTICO (REGISTRO): CONFIGURACIÓN DE EMAIL ---", file=sys.stderr, flush=True)
             print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}", file=sys.stderr, flush=True)
             print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}", file=sys.stderr, flush=True)
