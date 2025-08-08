@@ -1,67 +1,72 @@
+# tests/management/commands/import_questions.py
+
 import csv
 from django.core.management.base import BaseCommand
-from tests.models import Oposicion, Tema, Pregunta, Respuesta
+from tests.models import Oposicion, Bloque, Tema, Pregunta, Respuesta
 
 class Command(BaseCommand):
-    help = 'Importa preguntas desde un archivo CSV a la base de datos'
+    help = 'Importa preguntas desde un archivo CSV con el nuevo formato.'
+
+    def add_arguments(self, parser):
+        parser.add_argument('csv_file', type=str, help='La ruta al archivo CSV que se va a importar.')
 
     def handle(self, *args, **options):
-        file_path = 'preguntas.csv'
-        self.stdout.write(self.style.SUCCESS(f'Iniciando importación desde {file_path}...'))
+        csv_file_path = options['csv_file']
+        self.stdout.write(self.style.SUCCESS(f'Iniciando importación desde "{csv_file_path}"...'))
+
+        # Borra todas las preguntas y respuestas antiguas para evitar duplicados
+        self.stdout.write('Borrando datos antiguos...')
+        Pregunta.objects.all().delete()
+        Respuesta.objects.all().delete()
+        self.stdout.write(self.style.SUCCESS('Datos antiguos eliminados.'))
 
         try:
-            with open(file_path, mode='r', encoding='utf-8') as csv_file:
-                csv_reader = csv.reader(csv_file, delimiter=',')
-                line_count = 0
-                next(csv_reader) # Omitir cabecera
+            with open(csv_file_path, mode='r', encoding='utf-8') as file:
+                reader = csv.DictReader(file)
+                
+                for row in reader:
+                    try:
+                        # 1. Obtener o crear la Oposición
+                        oposicion, _ = Oposicion.objects.get_or_create(nombre=row['Oposicion'])
 
-                for row in csv_reader:
-                    # ... (extracción de datos igual que antes)
-                    id_pregunta, fuente_original, nombre_oposicion, nombre_tema, texto_pregunta, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, articulo_justificacion, texto_justificacion, url_fuente = row
-
-                    oposicion_obj, _ = Oposicion.objects.get_or_create(nombre=nombre_oposicion)
-                    
-                    # --- CORRECCIÓN CLAVE ---
-                    # Usamos get_or_create para el tema y luego nos aseguramos de que la URL está guardada
-                    tema_obj, created = Tema.objects.get_or_create(
-                        nombre=nombre_tema, 
-                        oposicion=oposicion_obj
-                    )
-                    # Si el tema es nuevo o no tiene URL, se la añadimos/actualizamos
-                    if created or not tema_obj.url_fuente_oficial:
-                        tema_obj.url_fuente_oficial = url_fuente
-                        tema_obj.save()
-
-                    pregunta_obj = Pregunta.objects.create(
-                        tema=tema_obj,
-                        texto_pregunta=texto_pregunta,
-                        fuente_original=fuente_original
-                    )
-                    
-                    respuestas_data = [
-                        {'texto': opcion_a, 'correcta': respuesta_correcta == 'A'},
-                        {'texto': opcion_b, 'correcta': respuesta_correcta == 'B'},
-                        {'texto': opcion_c, 'correcta': respuesta_correcta == 'C'},
-                        {'texto': opcion_d, 'correcta': respuesta_correcta == 'D'},
-                    ]
-
-                    for resp_data in respuestas_data:
-                        Respuesta.objects.create(
-                            pregunta=pregunta_obj,
-                            texto_respuesta=resp_data['texto'],
-                            es_correcta=resp_data['correcta'],
-                            texto_justificacion=texto_justificacion,
-                            fuente_justificacion=articulo_justificacion,
-                            url_fuente_oficial=url_fuente
+                        # 2. Obtener o crear el Bloque
+                        bloque, _ = Bloque.objects.get_or_create(
+                            oposicion=oposicion,
+                            numero=int(row['Bloque_Num']),
+                            defaults={'nombre': row['Bloque_Nombre']}
                         )
 
-                    line_count += 1
-                    if line_count % 250 == 0:
-                        self.stdout.write(f'{line_count} preguntas importadas...')
+                        # 3. Obtener o crear el Tema
+                        tema, _ = Tema.objects.get_or_create(
+                            bloque=bloque,
+                            numero=int(row['Tema_Num']),
+                            defaults={'nombre_oficial': row['Tema_Oficial']}
+                        )
 
-                self.stdout.write(self.style.SUCCESS(f'¡Proceso completado! Se han importado {line_count} preguntas.'))
+                        # 4. Crear la Pregunta
+                        pregunta = Pregunta.objects.create(
+                            tema=tema,
+                            texto_pregunta=row['Texto_Pregunta'],
+                            fuente_original=row['Fuente_Original']
+                        )
+
+                        # 5. Crear las Respuestas
+                        opciones = ['A', 'B', 'C', 'D']
+                        for opcion in opciones:
+                            es_correcta = (row['Respuesta_Correcta'] == opcion)
+                            Respuesta.objects.create(
+                                pregunta=pregunta,
+                                texto_respuesta=row[f'Opcion_{opcion}'],
+                                es_correcta=es_correcta,
+                                texto_justificacion=row['Texto_Justificacion'],
+                                articulo_justificacion=row['Articulo_Justificacion'],
+                                url_fuente_oficial=row['URL_Fuente_Oficial']
+                            )
+
+                    except Exception as e:
+                        self.stderr.write(self.style.ERROR(f"Error procesando la fila con ID {row.get('ID_Pregunta', 'N/A')}: {e}"))
+
+            self.stdout.write(self.style.SUCCESS('¡Importación completada con éxito!'))
 
         except FileNotFoundError:
-            self.stdout.write(self.style.ERROR('Error: No se encontró el archivo preguntas.csv'))
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f'Ha ocurrido un error: {e}'))
+            self.stderr.write(self.style.ERROR(f'Error: El archivo "{csv_file_path}" no fue encontrado.'))
