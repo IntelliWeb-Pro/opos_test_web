@@ -44,9 +44,34 @@ class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
             return Oposicion.objects.prefetch_related('bloques__temas').all()
         return super().get_queryset()
 
+    # --- MÉTODO 'list' SOBREESCRITO CON DIAGNÓSTICO DETALLADO ---
     def list(self, request, *args, **kwargs):
         print("--- OPOSICIONES: Iniciando listado ---", file=sys.stderr, flush=True)
-        return super().list(request, *args, **kwargs)
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            print(f"--- OPOSICIONES: Queryset obtenido.", file=sys.stderr, flush=True)
+
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                queryset = page
+            
+            serializer_class = self.get_serializer_class()
+            print(f"--- OPOSICIONES: Usando serializer: {serializer_class.__name__}", file=sys.stderr, flush=True)
+            serializer = self.get_serializer(queryset, many=True)
+            
+            print("--- OPOSICIONES: Iniciando serialización...", file=sys.stderr, flush=True)
+            serialized_data = serializer.data
+            print("--- OPOSICIONES: Serialización completada.", file=sys.stderr, flush=True)
+
+            if page is not None:
+                return self.get_paginated_response(serialized_data)
+            return Response(serialized_data)
+
+        except Exception as e:
+            print(f"--- ERROR CRÍTICO EN OPOSICIONES LIST: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
+            return Response({"error": "Error interno del servidor al listar oposiciones."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Tema.objects.all()
