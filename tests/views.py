@@ -5,7 +5,6 @@ import stripe
 import os
 import sys
 import traceback
-import tests.admin
 from datetime import date, timedelta
 
 from django.conf import settings
@@ -20,6 +19,7 @@ from django.template.loader import render_to_string
 from rest_framework.generics import CreateAPIView
 from django.utils import timezone
 from dj_rest_auth.views import PasswordResetView
+
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta
 from .serializers import (
     OposicionSerializer, TemaSerializer, PreguntaSimpleSerializer,
@@ -299,13 +299,12 @@ class VerificarCuentaView(APIView):
             return Response({'error': 'El código o el email son incorrectos.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': 'Ha ocurrido un error inesperado en el servidor.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class CustomPasswordResetView(PasswordResetView):
     def post(self, request, *args, **kwargs):
-        # Envolvemos la lógica original en un bloque try/except para cazar el error.
         try:
             print("--- PASSWORD RESET: Iniciando proceso de reseteo.", file=sys.stderr, flush=True)
             
-            # --- BLOQUE DE DIAGNÓSTICO DE EMAIL ---
             print("--- DIAGNÓSTICO (RESET): CONFIGURACIÓN DE EMAIL ---", file=sys.stderr, flush=True)
             print(f"EMAIL_BACKEND: {getattr(settings, 'EMAIL_BACKEND', 'No definido')}", file=sys.stderr, flush=True)
             print(f"EMAIL_HOST: {getattr(settings, 'EMAIL_HOST', 'No definido')}", file=sys.stderr, flush=True)
@@ -323,10 +322,6 @@ class CustomPasswordResetView(PasswordResetView):
             return response
 
         except Exception as e:
-            # Si algo falla, lo imprimiremos en los logs de forma muy visible.
             print(f"--- ERROR CRÍTICO EN PASSWORD RESET: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
-            
-            # Devolvemos un error 500, pero con el mensaje de error real.
             return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
