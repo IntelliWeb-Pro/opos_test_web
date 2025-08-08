@@ -394,4 +394,4 @@ class CustomPasswordResetView(PasswordResetView):
         except Exception as e:
             print(f"--- ERROR CRÍTICO EN PASSWORD RESET: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
-            return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERR
+            return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
