@@ -30,8 +30,10 @@ class CustomUserAdmin(BaseUserAdmin):
 
 # --- 3. CLASES DE ADMIN PARA LA NUEVA ESTRUCTURA DE TEMAS ---
 class TemaAdmin(admin.ModelAdmin):
-    list_display = ('numero', 'nombre_oficial', 'bloque', 'get_oposicion')
-    list_filter = ('bloque__oposicion', 'bloque')
+    # --- CAMBIOS REALIZADOS AQUÍ ---
+    list_display = ('numero', 'nombre_oficial', 'bloque', 'get_oposicion', 'es_premium')
+    list_editable = ('es_premium',) # Permite editar el campo 'es_premium' desde la lista
+    list_filter = ('bloque__oposicion', 'bloque', 'es_premium') # Añade filtro por estado premium
     search_fields = ('nombre_oficial',)
     list_display_links = ('nombre_oficial',)
 
