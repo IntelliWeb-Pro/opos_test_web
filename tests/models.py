@@ -7,6 +7,13 @@ from django.utils.text import slugify
 class Oposicion(models.Model):
     nombre = models.CharField(max_length=255, unique=True)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
+    # --- NUEVOS CAMPOS AÑADIDOS ---
+    descripcion_general = models.TextField(blank=True, null=True, help_text="Mensaje motivante que aparece sobre los botones.")
+    info_convocatoria = models.TextField(blank=True, null=True, help_text="Texto para el recuadro de la convocatoria.")
+    url_boe = models.URLField(blank=True, null=True, help_text="Enlace al BOE de la convocatoria.")
+    requisitos = models.TextField(blank=True, null=True, help_text="Texto para el recuadro de requisitos.")
+    info_adicional = models.TextField(blank=True, null=True, help_text="Texto para el tercer recuadro (destino, promoción interna, etc.).")
+
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -33,8 +40,6 @@ class Tema(models.Model):
     nombre_oficial = models.CharField(max_length=500, null=True)
     bloque = models.ForeignKey(Bloque, on_delete=models.CASCADE, related_name='temas', null=True)
     url_fuente_oficial = models.URLField(blank=True, null=True)
-    # --- LÍNEA AÑADIDA ---
-    # Por defecto, todos los temas nuevos serán premium. Puedes cambiarlo en el admin.
     es_premium = models.BooleanField(default=True)
     
     class Meta:

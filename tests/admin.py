@@ -15,7 +15,6 @@ def force_delete_users(modeladmin, request, queryset):
     deleted_count = 0
     for user in queryset:
         try:
-            # Borramos el usuario. on_delete=CASCADE se encargará del resto.
             user.delete()
             deleted_count += 1
         except Exception as e:
@@ -30,10 +29,9 @@ class CustomUserAdmin(BaseUserAdmin):
 
 # --- 3. CLASES DE ADMIN PARA LA NUEVA ESTRUCTURA DE TEMAS ---
 class TemaAdmin(admin.ModelAdmin):
-    # --- CAMBIOS REALIZADOS AQUÍ ---
     list_display = ('numero', 'nombre_oficial', 'bloque', 'get_oposicion', 'es_premium')
-    list_editable = ('es_premium',) # Permite editar el campo 'es_premium' desde la lista
-    list_filter = ('bloque__oposicion', 'bloque', 'es_premium') # Añade filtro por estado premium
+    list_editable = ('es_premium',)
+    list_filter = ('bloque__oposicion', 'bloque', 'es_premium')
     search_fields = ('nombre_oficial',)
     list_display_links = ('nombre_oficial',)
 
@@ -46,7 +44,7 @@ class BloqueAdmin(admin.ModelAdmin):
     list_filter = ('oposicion',)
     search_fields = ('nombre',)
 
-# --- 4. TUS OTRAS CLASES DE ADMIN (SIN CAMBIOS) ---
+# --- 4. TUS OTRAS CLASES DE ADMIN ---
 class PostAdmin(admin.ModelAdmin):
     list_display = ('titulo', 'slug', 'autor', 'estado', 'creado_en')
     list_filter = ('estado', 'creado_en')
@@ -58,13 +56,29 @@ class SuscripcionAdmin(admin.ModelAdmin):
     list_filter = ('activa',)
     search_fields = ('usuario__username', 'stripe_customer_id')
 
+# --- NUEVA CLASE AÑADIDA PARA GESTIONAR LA GUÍA DE OPOSICIÓN ---
+class OposicionAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'slug')
+    # Organiza los campos en el formulario de edición para que sea más claro
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('nombre', 'slug')
+        }),
+        ('Contenido de la Guía', {
+            'fields': ('descripcion_general', 'info_convocatoria', 'url_boe', 'requisitos', 'info_adicional'),
+            'description': 'Rellena aquí la información que se mostrará en la página de guía de la oposición.'
+        }),
+    )
+    prepopulated_fields = {'slug': ('nombre',)}
+
+
 # --- 5. REGISTRO DE TODOS LOS MODELOS EN EL ADMIN ---
-# Para el modelo User, damos de baja el admin por defecto y registramos el nuestro
 admin.site.unregister(User)
 admin.site.register(User, CustomUserAdmin)
 
-# Registramos el resto de modelos con sus configuraciones personalizadas
-admin.site.register(Oposicion)
+# --- LÍNEA MODIFICADA ---
+# Ahora registramos Oposicion usando nuestra nueva clase personalizada
+admin.site.register(Oposicion, OposicionAdmin)
 admin.site.register(Bloque, BloqueAdmin)
 admin.site.register(Tema, TemaAdmin)
 admin.site.register(Pregunta)
