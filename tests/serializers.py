@@ -15,7 +15,6 @@ User = get_user_model()
 class TemaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tema
-        # --- CAMPO AÑADIDO ---
         fields = ['id', 'numero', 'nombre_oficial', 'url_fuente_oficial', 'es_premium']
 
 class BloqueSerializer(serializers.ModelSerializer):
@@ -117,14 +116,24 @@ class CustomPasswordResetSerializer(PasswordResetSerializer):
         frontend_url = f"https://www.testestado.es/password-reset/{uid}/{token}/"
         return frontend_url
 
-# --- NUEVAS CLASES AÑADIDAS PARA EL ESTADO DE SUSCRIPCIÓN ---
+# --- SERIALIZERS PARA EL ESTADO DE SUSCRIPCIÓN ---
 class SuscripcionStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = Suscripcion
         fields = ['activa']
 
 class CustomUserDetailsSerializer(UserDetailsSerializer):
-    suscripcion = SuscripcionStatusSerializer(read_only=True, source='suscripcion')
+    # --- CAMBIO CLAVE: Usamos un SerializerMethodField ---
+    suscripcion = serializers.SerializerMethodField()
 
     class Meta(UserDetailsSerializer.Meta):
         fields = UserDetailsSerializer.Meta.fields + ('suscripcion',)
+
+    def get_suscripcion(self, obj):
+        # Comprueba si el usuario tiene un objeto de suscripción.
+        # hasattr() es más seguro que acceder directamente para evitar errores.
+        if hasattr(obj, 'suscripcion'):
+            # Si la tiene, la serializa y la devuelve.
+            return SuscripcionStatusSerializer(obj.suscripcion).data
+        # Si no la tiene, devuelve null.
+        return None
