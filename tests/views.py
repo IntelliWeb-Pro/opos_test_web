@@ -80,18 +80,40 @@ class TemaViewSet(viewsets.ReadOnlyModelViewSet):
 class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
     queryset = Pregunta.objects.all()
+    
     def get_serializer_class(self):
         if self.action == 'list': return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
+
     def get_queryset(self):
-        queryset = Pregunta.objects.all()
+        queryset = super().get_queryset()
         tema_id = self.request.query_params.get('tema')
+
         if tema_id is not None:
-            queryset = queryset.filter(tema__id=tema_id)
-            all_questions = list(queryset)
-            random.shuffle(all_questions)
-            return all_questions[:20]
+            try:
+                tema = Tema.objects.get(id=tema_id)
+                user = self.request.user
+                
+                # Comprobamos si el usuario tiene una suscripción activa
+                is_subscribed = hasattr(user, 'suscripcion') and user.suscripcion.activa
+
+                # --- LÓGICA DE ACCESO PREMIUM ---
+                if tema.es_premium and (not user.is_authenticated or not is_subscribed):
+                    # Si el tema es premium y el usuario no está suscrito,
+                    # le damos solo 5 preguntas de muestra.
+                    queryset = queryset.filter(tema__id=tema_id)[:5]
+                else:
+                    # Si el tema es gratuito o el usuario está suscrito, le damos 20.
+                    queryset = queryset.filter(tema__id=tema_id)
+                    all_questions = list(queryset)
+                    random.shuffle(all_questions)
+                    return all_questions[:20]
+
+            except Tema.DoesNotExist:
+                return Pregunta.objects.none()
+        
         return queryset
+    
     @action(detail=False, methods=['post'])
     def corregir(self, request):
         ids_preguntas = request.data.get('ids', [])

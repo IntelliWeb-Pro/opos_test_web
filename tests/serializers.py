@@ -3,8 +3,8 @@
 from rest_framework import serializers
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from django.contrib.auth import get_user_model
-from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post
-from dj_rest_auth.serializers import PasswordResetSerializer
+from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion
+from dj_rest_auth.serializers import PasswordResetSerializer, UserDetailsSerializer
 from allauth.account.utils import user_pk_to_url_str
 from django.conf import settings
 
@@ -15,7 +15,8 @@ User = get_user_model()
 class TemaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tema
-        fields = ['id', 'numero', 'nombre_oficial', 'url_fuente_oficial']
+        # --- CAMPO AÑADIDO ---
+        fields = ['id', 'numero', 'nombre_oficial', 'url_fuente_oficial', 'es_premium']
 
 class BloqueSerializer(serializers.ModelSerializer):
     temas = TemaSerializer(many=True, read_only=True)
@@ -23,13 +24,11 @@ class BloqueSerializer(serializers.ModelSerializer):
         model = Bloque
         fields = ['id', 'numero', 'nombre', 'temas']
 
-# --- NUEVO SERIALIZER AÑADIDO (VERSIÓN LIGERA) ---
 class OposicionListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Oposicion
         fields = ['id', 'nombre', 'slug']
 
-# Serializer completo para la vista de detalle
 class OposicionSerializer(serializers.ModelSerializer):
     bloques = BloqueSerializer(many=True, read_only=True)
     class Meta:
@@ -117,3 +116,15 @@ class CustomPasswordResetSerializer(PasswordResetSerializer):
         token = temp_key
         frontend_url = f"https://www.testestado.es/password-reset/{uid}/{token}/"
         return frontend_url
+
+# --- NUEVAS CLASES AÑADIDAS PARA EL ESTADO DE SUSCRIPCIÓN ---
+class SuscripcionStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Suscripcion
+        fields = ['activa']
+
+class CustomUserDetailsSerializer(UserDetailsSerializer):
+    suscripcion = SuscripcionStatusSerializer(read_only=True, source='suscripcion')
+
+    class Meta(UserDetailsSerializer.Meta):
+        fields = UserDetailsSerializer.Meta.fields + ('suscripcion',)

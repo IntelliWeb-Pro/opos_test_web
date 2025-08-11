@@ -6,7 +6,6 @@ from django.utils.text import slugify
 
 class Oposicion(models.Model):
     nombre = models.CharField(max_length=255, unique=True)
-    # --- CAMPO SLUG AÑADIDO ---
     slug = models.SlugField(max_length=255, unique=True, blank=True)
 
     def save(self, *args, **kwargs):
@@ -30,11 +29,13 @@ class Bloque(models.Model):
         return f"Bloque {self.numero}: {self.nombre} ({self.oposicion.nombre})"
 
 class Tema(models.Model):
-    # --- CAMBIO CLAVE: Se añade un valor por defecto para permitir la migración ---
     numero = models.IntegerField(default=0)
     nombre_oficial = models.CharField(max_length=500, null=True)
     bloque = models.ForeignKey(Bloque, on_delete=models.CASCADE, related_name='temas', null=True)
     url_fuente_oficial = models.URLField(blank=True, null=True)
+    # --- LÍNEA AÑADIDA ---
+    # Por defecto, todos los temas nuevos serán premium. Puedes cambiarlo en el admin.
+    es_premium = models.BooleanField(default=True)
     
     class Meta:
         unique_together = ('bloque', 'numero')

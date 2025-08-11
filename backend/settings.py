@@ -161,12 +161,15 @@ CORS_ALLOW_HEADERS = [
 REST_FRAMEWORK = { 'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',) }
 
 # --- DJ-REST-AUTH Y ALLAUTH ---
+# Bloque REST_AUTH unificado y corregido
 REST_AUTH = {         
     'USE_JWT': True,
     'JWT_AUTH_HTTPONLY': False,
-    'USER_DETAILS_SERIALIZER': 'dj_rest_auth.serializers.UserDetailsSerializer',
+    # --- LÍNEA MODIFICADA ---
+    'USER_DETAILS_SERIALIZER': 'tests.serializers.CustomUserDetailsSerializer',
     'REGISTER_SERIALIZER': 'tests.serializers.CustomRegisterSerializer',
     'SESSION_LOGIN': False,
+    'PASSWORD_RESET_SERIALIZER': 'tests.serializers.CustomPasswordResetSerializer',
 }
     
 AUTHENTICATION_BACKENDS = [
@@ -185,13 +188,3 @@ ACCOUNT_EMAIL_VERIFICATION = 'none' # Lo manejamos nosotros con nuestro código
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
-
-REST_AUTH = {         
-    'USE_JWT': True,
-    'JWT_AUTH_HTTPONLY': False,
-    'USER_DETAILS_SERIALIZER': 'dj_rest_auth.serializers.UserDetailsSerializer',
-    'REGISTER_SERIALIZER': 'tests.serializers.CustomRegisterSerializer',
-    'SESSION_LOGIN': False,
-    # VVV AÑADE ESTA LÍNEA VVV
-    'PASSWORD_RESET_SERIALIZER': 'tests.serializers.CustomPasswordResetSerializer',
-}
