@@ -94,16 +94,11 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
                 tema = Tema.objects.get(id=tema_id)
                 user = self.request.user
                 
-                # Comprobamos si el usuario tiene una suscripción activa
                 is_subscribed = hasattr(user, 'suscripcion') and user.suscripcion.activa
 
-                # --- LÓGICA DE ACCESO PREMIUM ---
                 if tema.es_premium and (not user.is_authenticated or not is_subscribed):
-                    # Si el tema es premium y el usuario no está suscrito,
-                    # le damos solo 5 preguntas de muestra.
                     queryset = queryset.filter(tema__id=tema_id)[:5]
                 else:
-                    # Si el tema es gratuito o el usuario está suscrito, le damos 20.
                     queryset = queryset.filter(tema__id=tema_id)
                     all_questions = list(queryset)
                     random.shuffle(all_questions)
@@ -240,12 +235,30 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 class CreateCheckoutSessionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request, *args, **kwargs):
-        price_id = os.environ.get('STRIPE_PRICE_ID')
-        if not price_id: return Response({'error': 'La configuración de pagos en el servidor está incompleta.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Nuevo: soporte de múltiples planes y prueba de 7 días (Stripe gestiona el trial)
+        plan = (request.data.get('plan') or '').lower()
+        plan_env = {
+            'bronce': os.environ.get('STRIPE_PRICE_BRONCE'),
+            'plata': os.environ.get('STRIPE_PRICE_PLATA'),
+            'oro': os.environ.get('STRIPE_PRICE_ORO'),
+            'platino': os.environ.get('STRIPE_PRICE_PLATINO'),
+        }
+        price_id = None
+        if plan:
+            price_id = plan_env.get(plan)
+        # retrocompatibilidad: si no se envía plan, usamos la variable existente
+        if not price_id:
+            price_id = os.environ.get('STRIPE_PRICE_ID')
+        if not price_id:
+            return Response({'error': 'Plan inválido o configuración de precios incompleta.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             checkout_session = stripe.checkout.Session.create(
                 line_items=[{'price': price_id, 'quantity': 1}],
                 mode='subscription',
+                # Prueba gratuita de 7 días (opción B)
+                subscription_data={
+                    'trial_period_days': 7,
+                },
                 success_url='https://www.testestado.es/pago-exitoso?session_id={CHECKOUT_SESSION_ID}',
                 cancel_url='https://www.testestado.es/pago-cancelado',
                 customer_email=request.user.email
