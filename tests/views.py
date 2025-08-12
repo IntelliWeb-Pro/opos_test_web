@@ -238,10 +238,10 @@ class CreateCheckoutSessionView(APIView):
         # Nuevo: soporte de múltiples planes y prueba de 7 días (Stripe gestiona el trial)
         plan = (request.data.get('plan') or '').lower()
         plan_env = {
-            'bronce': os.environ.get('STRIPE_PRICE_BRONCE'),
-            'plata': os.environ.get('STRIPE_PRICE_PLATA'),
-            'oro': os.environ.get('STRIPE_PRICE_ORO'),
-            'platino': os.environ.get('STRIPE_PRICE_PLATINO'),
+            'bronce': os.environ.get('NEXT_PUBLIC_STRIPE_PRICE_BRONCE'),
+            'plata': os.environ.get('NEXT_PUBLIC_STRIPE_PRICE_PLATA'),
+            'oro': os.environ.get('NEXT_PUBLIC_STRIPE_PRICE_ORO'),
+            'platino': os.environ.get('NEXT_PUBLIC_STRIPE_PRICE_PLATINO'),
         }
         price_id = None
         if plan:
