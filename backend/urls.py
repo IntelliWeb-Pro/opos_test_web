@@ -12,7 +12,8 @@ from tests.views import (
     RankingSemanalView,
     AnalisisRefuerzoView,
     ContactoView,
-    CustomPasswordResetView 
+    CustomPasswordResetView,
+    DemoQuestionsView 
 )
 
 # Forzamos la importación del admin para que Django lo registre al arrancar.
@@ -44,6 +45,8 @@ urlpatterns = [
     path('api/create-checkout-session/', CreateCheckoutSessionView.as_view(), name='create-checkout-session'),
     path('api/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'),
     path('api/contacto/', ContactoView.as_view(), name='contacto'),
+    path('api/demo-questions/', DemoQuestionsView.as_view(), name='demo-questions'),
+
     
     # --- RUTA GENERAL PARA EL RESTO DE LA API (ViewSets) ---
     path('api/', include('tests.urls')),

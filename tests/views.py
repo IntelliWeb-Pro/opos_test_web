@@ -430,3 +430,26 @@ class CustomPasswordResetView(PasswordResetView):
             print(f"--- ERROR CRÍTICO EN PASSWORD RESET: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
             return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class DemoQuestionsView(APIView):
+    """
+    Devuelve N preguntas aleatorias (por defecto 15), públicas,
+    con opciones sin marcar cuál es correcta.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        # Número solicitado (clamp a 1..15 para que sea ligero)
+        try:
+            n = int(request.query_params.get("n", 15))
+        except (TypeError, ValueError):
+            n = 15
+        n = max(1, min(15, n))
+
+        qs = (
+            Pregunta.objects
+            .select_related("tema")
+            .prefetch_related("respuestas")
+            .order_by("?")[:n]
+        )
+        data = PreguntaSimpleSerializer(qs, many=True).data
+        return Response({"count": len(data), "results": data})
