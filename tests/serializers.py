@@ -140,15 +140,53 @@ class CustomUserDetailsSerializer(UserDetailsSerializer):
         return None
 
 class TestSessionSerializer(serializers.ModelSerializer):
+    # Alias de escritura: acepta "preguntas" además de "preguntas_ids"
+    preguntas = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        help_text="Alias de preguntas_ids. Lista de IDs de preguntas."
+    )
+
     class Meta:
         model = TestSession
         read_only_fields = ("id", "user", "created_at", "updated_at")
         fields = (
-            "id", "tipo", "preguntas_ids", "idx_actual", "respuestas",
-            "tiempo_restante", "estado", "config", "created_at", "updated_at",
+            "id", "tipo",
+            "preguntas_ids",     # ← guardamos aquí
+            "preguntas",         # ← alias write_only
+            "idx_actual", "respuestas",
+            "tiempo_restante", "estado", "config",
+            "created_at", "updated_at",
         )
 
+    def _coerce_alias(self, validated_data):
+        """
+        Si llega 'preguntas', muévelo a 'preguntas_ids'.
+        """
+        preguntas = validated_data.pop("preguntas", None)
+        if preguntas is not None:
+            validated_data["preguntas_ids"] = preguntas
+        return validated_data
+
     def validate(self, data):
-        if data.get("estado") == "finalizado" and not (data.get("preguntas_ids") or getattr(self.instance, "preguntas_ids", None)):
-            raise serializers.ValidationError("No puedes finalizar una sesión sin preguntas.")
+        data = dict(data)  # asegurar que es mutable
+        data = self._coerce_alias(data)
+
+        # Si intentan finalizar sin preguntas, rechazamos
+        if data.get("estado") == "finalizado":
+            tiene_preguntas = bool(
+                data.get("preguntas_ids")
+                or getattr(self.instance, "preguntas_ids", None)
+            )
+            if not tiene_preguntas:
+                raise serializers.ValidationError("No puedes finalizar una sesión sin preguntas.")
         return data
+
+    def create(self, validated_data):
+        validated_data = self._coerce_alias(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data = self._coerce_alias(validated_data)
+        return super().update(instance, validated_data)
