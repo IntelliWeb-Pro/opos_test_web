@@ -1,37 +1,42 @@
-# tests/migrations/00XX_add_slug_to_tema.py
+# tests/migrations/0012_add_slug_to_tema.py
 from django.db import migrations, models
 from django.utils.text import slugify
 
 def populate_slugs(apps, schema_editor):
     Tema = apps.get_model('tests', 'Tema')
     seen = set()
-    for t in Tema.objects.all().only('id', 'nombre_oficial', 'slug'):
-        base = slugify(t.nombre_oficial)[:240] or f"tema-{t.id}"
-        slug = base
-        i = 2
-        # fuerza unicidad en memoria
-        while slug in seen or Tema.objects.filter(slug=slug).exclude(pk=t.pk).exists():
-            slug = f"{base}-{i}"
-            i += 1
-        t.slug = slug
-        t.save(update_fields=['slug'])
-        seen.add(slug)
+    for tema in Tema.objects.all().order_by('id'):
+        base = slugify(tema.nombre_oficial or '', allow_unicode=True) or f"tema-{tema.id}"
+        candidate = base
+        n = 2
+        # Garantizar unicidad
+        while candidate in seen or Tema.objects.filter(slug=candidate).exclude(pk=tema.pk).exists():
+            candidate = f"{base}-{n}"
+            n += 1
+        tema.slug = candidate
+        tema.save(update_fields=['slug'])
+        seen.add(candidate)
 
 class Migration(migrations.Migration):
+
+    # ⬇️ CAMBIA '0011_previous' por el ÚLTIMO nombre real de tu app tests
     dependencies = [
-        ('tests', '0012_prev_migration'),  # ← ajusta al nombre real
+        ('tests', '0011_oposicion_descripcion_general_and_more'),
     ]
 
     operations = [
+        # 1) Añadimos el campo de forma laxa (null/blank) para poder rellenarlo
         migrations.AddField(
             model_name='tema',
             name='slug',
-            field=models.SlugField(max_length=255, unique=True, db_index=True, null=True, blank=True),
+            field=models.SlugField(max_length=220, null=True, blank=True, db_index=True),
         ),
-        migrations.RunPython(populate_slugs, migrations.RunPython.noop),
+        # 2) Rellenamos datos existentes
+        migrations.RunPython(populate_slugs, reverse_code=migrations.RunPython.noop),
+        # 3) Cerramos restricciones: único y no nulo
         migrations.AlterField(
             model_name='tema',
             name='slug',
-            field=models.SlugField(max_length=255, unique=True, db_index=True),
+            field=models.SlugField(max_length=220, unique=True, null=False, db_index=True),
         ),
     ]
