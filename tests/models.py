@@ -4,6 +4,7 @@ from django.db import models
 from django.conf import settings
 from django.utils.text import slugify
 from django.contrib.postgres.fields import ArrayField  # si usas Postgres
+import uuid
 
 
 class Oposicion(models.Model):
@@ -119,45 +120,35 @@ class CodigoVerificacion(models.Model):
 
     def __str__(self):
         return f"Código para {self.usuario.username}"
-class TestSesion(models.Model):
-    TIPO_CHOICES = (('normal', 'normal'), ('repaso', 'repaso'))
+class TestSession(models.Model):
+    ESTADOS = (
+        ("en_curso", "En curso"),
+        ("abandonado", "Abandonado"),
+        ("finalizado", "Finalizado"),
+    )
+    TIPOS = (
+        ("tema", "Tema"),
+        ("repaso", "Repaso"),
+    )
 
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sesiones_test')
-    tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
-
-    # Para test normal:
-    tema_slug = models.CharField(max_length=220, null=True, blank=True)
-    # (opcional) para mostrar contexto
-    oposicion_slug = models.CharField(max_length=220, null=True, blank=True)
-
-    # Para test de repaso:
-    try:
-        tema_slugs = ArrayField(models.CharField(max_length=220), default=list, blank=True)
-        pregunta_ids = ArrayField(models.IntegerField(), default=list, blank=True)
-    except Exception:
-        # Si no tienes Postgres, usa JSONField:
-        from django.db.models import JSONField
-        tema_slugs = JSONField(default=list, blank=True)
-        pregunta_ids = JSONField(default=list, blank=True)
-
-    n_preg_por_tema = models.PositiveIntegerField(default=0)
-
-    # Tiempo (segundos)
-    tiempo_total = models.PositiveIntegerField(default=0)
-    tiempo_restante = models.PositiveIntegerField(default=0)
-
-    # Estado actual
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sesiones")
+    tipo = models.CharField(max_length=20, choices=TIPOS)
+    preguntas_ids = models.JSONField(default=list, blank=True)   # [1,2,3,...]
     idx_actual = models.PositiveIntegerField(default=0)
-    respuestas = models.JSONField(default=dict, blank=True)  # {pregunta_id: respuesta_id}
-    preguntas = models.JSONField(default=list, blank=True)    # array de preguntas (SIN es_correcta)
-
-    # Gestión
-    estado = models.CharField(max_length=20, default='in_progress')  # in_progress | completed
-    creado = models.DateTimeField(auto_now_add=True)
-    actualizado = models.DateTimeField(auto_now=True)
+    respuestas = models.JSONField(default=dict, blank=True)      # {"123": 456, ...}
+    tiempo_restante = models.PositiveIntegerField(default=0)     # segundos
+    estado = models.CharField(max_length=20, choices=ESTADOS, default="en_curso")
+    config = models.JSONField(default=dict, blank=True)          # {"temas":[...], "nPorTema":..., "minutos":..., "oposicion":...}
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-actualizado']
+        indexes = [
+            models.Index(fields=["user", "estado"]),
+            models.Index(fields=["updated_at"]),
+        ]
+        ordering = ["-updated_at"]
 
     def __str__(self):
-        return f"Sesion({self.id}) {self.usuario} {self.tipo} {self.estado}"
+        return f"{self.id} · {self.user} · {self.tipo} · {self.estado}"

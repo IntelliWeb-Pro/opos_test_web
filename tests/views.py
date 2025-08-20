@@ -22,12 +22,12 @@ from dj_rest_auth.views import PasswordResetView
 from django_filters.rest_framework import DjangoFilterBackend  # ⬅️ NUEVO
 from .permissions import IsSubscribed
 
-from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta, TestSesion
+from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta, TestSession
 from .serializers import (
     OposicionSerializer, OposicionListSerializer,
     TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
-    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, TestSesionSerializer
+    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, TestSessionSerializer
 )
 
 # --- VISTAS DEL ROUTER ---
@@ -511,31 +511,41 @@ class DemoQuestionsView(APIView):
         data = PreguntaSimpleSerializer(qs, many=True).data
         return Response({"count": len(data), "results": data})
 
-class TestSesionViewSet(viewsets.ModelViewSet):
+class IsOwner(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        return getattr(obj, "user_id", None) == request.user.id
+
+class TestSessionViewSet(viewsets.ModelViewSet):
     """
-    CRUD de sesiones de test en curso (premium).
-    - POST   /api/sesiones/              -> crear sesión (al arrancar test)
-    - PATCH  /api/sesiones/{id}/         -> guardar progreso (idx, respuestas, tiempo_restante…)
-    - GET    /api/sesiones/?estado=in_progress -> listar inacabados (para 'Mi Progreso')
-    - GET    /api/sesiones/{id}/         -> recuperar para reanudar
-    - POST   /api/sesiones/{id}/finalizar/ -> marcar como completado y opcionalmente borrar
+    Endpoints:
+      - POST   /api/sesiones/                         (crear)
+      - GET    /api/sesiones/?pendientes=1&limit=5    (listar)
+      - GET    /api/sesiones/<uuid>/                  (detalle)
+      - PATCH  /api/sesiones/<uuid>/                  (parchear)
     """
-    serializer_class = TestSesionSerializer
-    permission_classes = [permissions.IsAuthenticated, IsSubscribed]
+    serializer_class = TestSessionSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwner]
 
     def get_queryset(self):
-        qs = TestSesion.objects.filter(usuario=self.request.user)
-        estado = self.request.query_params.get('estado')
-        if estado:
-            qs = qs.filter(estado=estado)
+        qs = TestSession.objects.filter(user=self.request.user)
+        pendientes = self.request.query_params.get("pendientes")
+        tipo = self.request.query_params.get("tipo")
+        if pendientes:
+            qs = qs.filter(estado__in=["en_curso", "abandonado"])
+        if tipo in {"tema", "repaso"}:
+            qs = qs.filter(tipo=tipo)
         return qs
 
-    def perform_create(self, serializer):
-        serializer.save(usuario=self.request.user)
+    def list(self, request, *args, **kwargs):
+        qs = self.get_queryset()
+        limit = request.query_params.get("limit")
+        if limit:
+            try:
+                qs = qs[:int(limit)]
+            except ValueError:
+                pass
+        ser = self.get_serializer(qs, many=True)
+        return Response(ser.data)
 
-    @action(detail=True, methods=['post'])
-    def finalizar(self, request, pk=None):
-        sesion = self.get_object()
-        sesion.estado = 'completed'
-        sesion.save(update_fields=['estado', 'actualizado'])
-        return Response({'ok': True})
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

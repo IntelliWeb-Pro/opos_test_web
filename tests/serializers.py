@@ -3,7 +3,7 @@
 from rest_framework import serializers
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from django.contrib.auth import get_user_model
-from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion, TestSesion
+from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion, TestSession
 
 from dj_rest_auth.serializers import PasswordResetSerializer, UserDetailsSerializer
 from allauth.account.utils import user_pk_to_url_str
@@ -139,21 +139,16 @@ class CustomUserDetailsSerializer(UserDetailsSerializer):
             return SuscripcionStatusSerializer(obj.suscripcion).data
         return None
 
-class TestSesionSerializer(serializers.ModelSerializer):
+class TestSessionSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TestSesion
+        model = TestSession
+        read_only_fields = ("id", "user", "created_at", "updated_at")
         fields = (
-            'id', 'tipo', 'tema_slug', 'oposicion_slug', 'tema_slugs',
-            'n_preg_por_tema', 'tiempo_total', 'tiempo_restante',
-            'idx_actual', 'respuestas', 'preguntas', 'pregunta_ids',
-            'estado', 'creado', 'actualizado'
+            "id", "tipo", "preguntas_ids", "idx_actual", "respuestas",
+            "tiempo_restante", "estado", "config", "created_at", "updated_at",
         )
-        read_only_fields = ('estado', 'creado', 'actualizado')
 
     def validate(self, data):
-        tipo = data.get('tipo') or self.instance and self.instance.tipo
-        if tipo == 'normal' and not (data.get('tema_slug') or (self.instance and self.instance.tema_slug)):
-            raise serializers.ValidationError("Para 'normal' debes indicar tema_slug.")
-        if tipo == 'repaso' and not (data.get('tema_slugs') or (self.instance and self.instance.tema_slugs)):
-            raise serializers.ValidationError("Para 'repaso' debes indicar tema_slugs.")
+        if data.get("estado") == "finalizado" and not (data.get("preguntas_ids") or getattr(self.instance, "preguntas_ids", None)):
+            raise serializers.ValidationError("No puedes finalizar una sesión sin preguntas.")
         return data

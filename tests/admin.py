@@ -3,7 +3,7 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion, TestSesion
+from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion, TestSession
 
 
 # --- 1. ACCIÓN DE BORRADO FORZADO ---
@@ -94,11 +94,11 @@ class OposicionAdmin(admin.ModelAdmin):
     )
     prepopulated_fields = {'slug': ('nombre',)}
 
-@admin.register(TestSesion)
-class TestSesionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'usuario', 'tipo', 'estado', 'tema_slug', 'creado', 'actualizado')
-    list_filter = ('tipo', 'estado')
-    search_fields = ('usuario__username', 'tema_slug')
+@admin.register(TestSession)
+class TestSessionAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "tipo", "estado", "updated_at")
+    list_filter = ("tipo", "estado")
+    search_fields = ("id", "user__email", "user__username")
 
 
 # --- 5. REGISTRO DE TODOS LOS MODELOS EN EL ADMIN ---
