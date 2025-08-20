@@ -138,6 +138,16 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(preguntas_corregidas, many=True)
         return Response(serializer.data)
 
+    
+    @action(detail=False, methods=['post'])
+    def corregir(self, request):
+        ids_preguntas = request.data.get('ids', [])
+        if not ids_preguntas: return Response({"error": "No se proporcionaron IDs de preguntas"}, status=status.HTTP_400_BAD_REQUEST)
+        preguntas_corregidas = Pregunta.objects.filter(id__in=ids_preguntas)
+        serializer = self.get_serializer(preguntas_corregidas, many=True)
+        return Response(serializer.data)
+
+
 class ResultadoTestViewSet(viewsets.ModelViewSet):
     queryset = ResultadoTest.objects.all()
     permission_classes = [permissions.IsAuthenticated]
