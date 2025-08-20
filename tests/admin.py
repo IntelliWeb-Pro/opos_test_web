@@ -29,15 +29,37 @@ class CustomUserAdmin(BaseUserAdmin):
 
 # --- 3. CLASES DE ADMIN PARA LA NUEVA ESTRUCTURA DE TEMAS ---
 class TemaAdmin(admin.ModelAdmin):
-    list_display = ('numero', 'nombre_oficial', 'bloque', 'get_oposicion', 'es_premium')
+    list_display = ('numero', 'nombre_oficial', 'slug', 'bloque', 'get_oposicion', 'es_premium')
     list_editable = ('es_premium',)
     list_filter = ('bloque__oposicion', 'bloque', 'es_premium')
-    search_fields = ('nombre_oficial',)
+    search_fields = ('nombre_oficial', 'slug')
     list_display_links = ('nombre_oficial',)
+
+    # Relleno automático del slug (puedes editarlo manualmente si quieres)
+    prepopulated_fields = {'slug': ('nombre_oficial',)}
+
+    # Opcional: orden y campos visibles en el formulario
+    fieldsets = (
+        (None, {
+            'fields': ('bloque', 'numero', 'nombre_oficial', 'slug', 'es_premium')
+        }),
+        ('Metadatos', {
+            'fields': ('url_fuente_oficial',),
+            'classes': ('collapse',),
+        }),
+    )
+    ordering = ('bloque', 'numero')
 
     @admin.display(description='Oposición', ordering='bloque__oposicion')
     def get_oposicion(self, obj):
         return obj.bloque.oposicion
+
+    def save_model(self, request, obj, form, change):
+        # Si el slug viene vacío, lo generamos automáticamente
+        if not obj.slug and obj.nombre_oficial:
+            base = f"{obj.numero}-{obj.nombre_oficial}" if getattr(obj, "numero", None) else obj.nombre_oficial
+            obj.slug = slugify(base)
+        super().save_model(request, obj, form, change)
 
 class BloqueAdmin(admin.ModelAdmin):
     list_display = ('numero', 'nombre', 'oposicion')

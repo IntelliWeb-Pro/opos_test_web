@@ -19,6 +19,7 @@ from django.template.loader import render_to_string
 from rest_framework.generics import CreateAPIView
 from django.utils import timezone
 from dj_rest_auth.views import PasswordResetView
+from django_filters.rest_framework import DjangoFilterBackend  # ⬅️ NUEVO
 
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta
 from .serializers import (
@@ -73,9 +74,18 @@ class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only de Temas. Se añade filtrado por slug manteniendo compatibilidad con id.
+    Uso:
+      - /api/temas/?slug=mi-tema-slug
+      - /api/temas/?id=123
+    """
     queryset = Tema.objects.all()
     serializer_class = TemaSerializer
     permission_classes = [permissions.AllowAny]
+    filter_backends = [DjangoFilterBackend]  # ⬅️ NUEVO
+    filterset_fields = ['id', 'slug', 'bloque']  # ⬅️ NUEVO (ajusta si necesitas más campos)
+
 
 class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
@@ -86,20 +96,47 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         return PreguntaDetalladaSerializer
 
     def get_queryset(self):
+        """
+        Compatibilidad:
+          - ?tema=<id>
+          - ?tema_slug=<slug>  ⬅️ NUEVO
+        Mantiene la lógica de premium: si el tema es premium y no hay suscripción activa,
+        devolvemos solo 5 preguntas. Si hay acceso completo, devolvemos un shuffle limitado a 20.
+        """
         queryset = super().get_queryset()
-        tema_id = self.request.query_params.get('tema')
+        request = self.request
+        user = request.user
 
+        tema_id = request.query_params.get('tema')
+        tema_slug = request.query_params.get('tema_slug')  # ⬅️ NUEVO
+
+        # Prioridad a tema por id si viene presente (retrocompatibilidad)
         if tema_id is not None:
             try:
                 tema = Tema.objects.get(id=tema_id)
-                user = self.request.user
-                
                 is_subscribed = hasattr(user, 'suscripcion') and user.suscripcion.activa
 
                 if tema.es_premium and (not user.is_authenticated or not is_subscribed):
                     queryset = queryset.filter(tema__id=tema_id)[:5]
                 else:
                     queryset = queryset.filter(tema__id=tema_id)
+                    all_questions = list(queryset)
+                    random.shuffle(all_questions)
+                    return all_questions[:20]
+
+            except Tema.DoesNotExist:
+                return Pregunta.objects.none()
+
+        # Filtro por slug de tema (nuevo)
+        if tema_slug is not None:
+            try:
+                tema = Tema.objects.get(slug=tema_slug)
+                is_subscribed = hasattr(user, 'suscripcion') and user.suscripcion.activa
+
+                if tema.es_premium and (not user.is_authenticated or not is_subscribed):
+                    queryset = queryset.filter(tema__slug=tema_slug)[:5]
+                else:
+                    queryset = queryset.filter(tema__slug=tema_slug)
                     all_questions = list(queryset)
                     random.shuffle(all_questions)
                     return all_questions[:20]
@@ -117,6 +154,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(preguntas_corregidas, many=True)
         return Response(serializer.data)
 
+
 class ResultadoTestViewSet(viewsets.ModelViewSet):
     queryset = ResultadoTest.objects.all()
     permission_classes = [permissions.IsAuthenticated]
@@ -127,6 +165,7 @@ class ResultadoTestViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(usuario=self.request.user)
     def perform_create(self, serializer):
         serializer.save(usuario=self.request.user)
+
 
 class PostViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Post.objects.filter(estado='publicado').select_related('autor')
@@ -430,6 +469,7 @@ class CustomPasswordResetView(PasswordResetView):
             print(f"--- ERROR CRÍTICO EN PASSWORD RESET: {type(e).__name__} - {e}", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
             return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class DemoQuestionsView(APIView):
     """
     Devuelve N preguntas aleatorias (por defecto 15), públicas,

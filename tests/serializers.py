@@ -15,7 +15,7 @@ User = get_user_model()
 class TemaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tema
-        fields = ['id', 'numero', 'nombre_oficial', 'url_fuente_oficial', 'es_premium']
+        fields = ['id', 'numero', 'nombre_oficial', 'url_fuente_oficial', 'es_premium', 'slug']
 
 class BloqueSerializer(serializers.ModelSerializer):
     temas = TemaSerializer(many=True, read_only=True)
