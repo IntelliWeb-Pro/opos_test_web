@@ -19,7 +19,7 @@ def populate_slugs(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('tests', 'XXXX_prev_migration'),  # ← ajusta al nombre real
+        ('tests', '0012_prev_migration'),  # ← ajusta al nombre real
     ]
 
     operations = [
