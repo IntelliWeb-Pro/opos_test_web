@@ -139,6 +139,11 @@ class CustomUserDetailsSerializer(UserDetailsSerializer):
             return SuscripcionStatusSerializer(obj.suscripcion).data
         return None
 
+# tests/serializers.py (sólo la clase TestSessionSerializer)
+
+from rest_framework import serializers
+from .models import TestSession
+
 class TestSessionSerializer(serializers.ModelSerializer):
     # Alias de escritura: acepta "preguntas" además de "preguntas_ids"
     preguntas = serializers.ListField(
