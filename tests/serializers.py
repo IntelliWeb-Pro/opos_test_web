@@ -3,7 +3,8 @@
 from rest_framework import serializers
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from django.contrib.auth import get_user_model
-from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion
+from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion, TestSesion
+
 from dj_rest_auth.serializers import PasswordResetSerializer, UserDetailsSerializer
 from allauth.account.utils import user_pk_to_url_str
 from django.conf import settings
@@ -137,3 +138,22 @@ class CustomUserDetailsSerializer(UserDetailsSerializer):
         if hasattr(obj, 'suscripcion'):
             return SuscripcionStatusSerializer(obj.suscripcion).data
         return None
+
+class TestSesionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TestSesion
+        fields = (
+            'id', 'tipo', 'tema_slug', 'oposicion_slug', 'tema_slugs',
+            'n_preg_por_tema', 'tiempo_total', 'tiempo_restante',
+            'idx_actual', 'respuestas', 'preguntas', 'pregunta_ids',
+            'estado', 'creado', 'actualizado'
+        )
+        read_only_fields = ('estado', 'creado', 'actualizado')
+
+    def validate(self, data):
+        tipo = data.get('tipo') or self.instance and self.instance.tipo
+        if tipo == 'normal' and not (data.get('tema_slug') or (self.instance and self.instance.tema_slug)):
+            raise serializers.ValidationError("Para 'normal' debes indicar tema_slug.")
+        if tipo == 'repaso' and not (data.get('tema_slugs') or (self.instance and self.instance.tema_slugs)):
+            raise serializers.ValidationError("Para 'repaso' debes indicar tema_slugs.")
+        return data

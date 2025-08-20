@@ -3,7 +3,8 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion
+from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion, TestSesion
+
 
 # --- 1. ACCIÓN DE BORRADO FORZADO ---
 @admin.action(description="Forzar borrado de usuarios seleccionados (y sus datos)")
@@ -92,6 +93,12 @@ class OposicionAdmin(admin.ModelAdmin):
         }),
     )
     prepopulated_fields = {'slug': ('nombre',)}
+
+@admin.register(TestSesion)
+class TestSesionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'usuario', 'tipo', 'estado', 'tema_slug', 'creado', 'actualizado')
+    list_filter = ('tipo', 'estado')
+    search_fields = ('usuario__username', 'tema_slug')
 
 
 # --- 5. REGISTRO DE TODOS LOS MODELOS EN EL ADMIN ---

@@ -3,6 +3,8 @@
 from django.db import models
 from django.conf import settings
 from django.utils.text import slugify
+from django.contrib.postgres.fields import ArrayField  # si usas Postgres
+
 
 class Oposicion(models.Model):
     nombre = models.CharField(max_length=255, unique=True)
@@ -117,3 +119,45 @@ class CodigoVerificacion(models.Model):
 
     def __str__(self):
         return f"Código para {self.usuario.username}"
+class TestSesion(models.Model):
+    TIPO_CHOICES = (('normal', 'normal'), ('repaso', 'repaso'))
+
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sesiones_test')
+    tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
+
+    # Para test normal:
+    tema_slug = models.CharField(max_length=220, null=True, blank=True)
+    # (opcional) para mostrar contexto
+    oposicion_slug = models.CharField(max_length=220, null=True, blank=True)
+
+    # Para test de repaso:
+    try:
+        tema_slugs = ArrayField(models.CharField(max_length=220), default=list, blank=True)
+        pregunta_ids = ArrayField(models.IntegerField(), default=list, blank=True)
+    except Exception:
+        # Si no tienes Postgres, usa JSONField:
+        from django.db.models import JSONField
+        tema_slugs = JSONField(default=list, blank=True)
+        pregunta_ids = JSONField(default=list, blank=True)
+
+    n_preg_por_tema = models.PositiveIntegerField(default=0)
+
+    # Tiempo (segundos)
+    tiempo_total = models.PositiveIntegerField(default=0)
+    tiempo_restante = models.PositiveIntegerField(default=0)
+
+    # Estado actual
+    idx_actual = models.PositiveIntegerField(default=0)
+    respuestas = models.JSONField(default=dict, blank=True)  # {pregunta_id: respuesta_id}
+    preguntas = models.JSONField(default=list, blank=True)    # array de preguntas (SIN es_correcta)
+
+    # Gestión
+    estado = models.CharField(max_length=20, default='in_progress')  # in_progress | completed
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-actualizado']
+
+    def __str__(self):
+        return f"Sesion({self.id}) {self.usuario} {self.tipo} {self.estado}"

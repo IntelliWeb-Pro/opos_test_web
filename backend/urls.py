@@ -13,7 +13,7 @@ from tests.views import (
     AnalisisRefuerzoView,
     ContactoView,
     CustomPasswordResetView,
-    DemoQuestionsView 
+    DemoQuestionsView
 )
 
 # Forzamos la importación del admin para que Django lo registre al arrancar.
