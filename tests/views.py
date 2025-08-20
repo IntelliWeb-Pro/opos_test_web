@@ -73,18 +73,22 @@ class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": "Error interno del servidor al listar oposiciones."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# tests/views.py
+
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Read-only de Temas. Se añade filtrado por slug manteniendo compatibilidad con id.
-    Uso:
-      - /api/temas/?slug=mi-tema-slug
-      - /api/temas/?id=123
-    """
     queryset = Tema.objects.all()
     serializer_class = TemaSerializer
     permission_classes = [permissions.AllowAny]
-    filter_backends = [DjangoFilterBackend]  # ⬅️ NUEVO
-    filterset_fields = ['id', 'slug', 'bloque']  # ⬅️ NUEVO (ajusta si necesitas más campos)
+    lookup_field = 'slug'  # ⬅️ ahora el retrieve es /api/temas/<slug>/
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # opcional: permitir ?oposicion=<slug_oposicion>
+        opos_slug = self.request.query_params.get('oposicion')
+        if opos_slug:
+            qs = qs.filter(bloque__oposicion__slug=opos_slug)
+        return qs
+
 
 
 class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
@@ -92,59 +96,47 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Pregunta.objects.all()
     
     def get_serializer_class(self):
-        if self.action == 'list': return PreguntaSimpleSerializer
+        if self.action == 'list':
+            return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
 
     def get_queryset(self):
-        """
-        Compatibilidad:
-          - ?tema=<id>
-          - ?tema_slug=<slug>  ⬅️ NUEVO
-        Mantiene la lógica de premium: si el tema es premium y no hay suscripción activa,
-        devolvemos solo 5 preguntas. Si hay acceso completo, devolvemos un shuffle limitado a 20.
-        """
         queryset = super().get_queryset()
-        request = self.request
-        user = request.user
 
-        tema_id = request.query_params.get('tema')
-        tema_slug = request.query_params.get('tema_slug')  # ⬅️ NUEVO
+        # ⬅️ nuevo: filtrar por slug del tema
+        tema_slug = self.request.query_params.get('tema_slug')
 
-        # Prioridad a tema por id si viene presente (retrocompatibilidad)
-        if tema_id is not None:
-            try:
-                tema = Tema.objects.get(id=tema_id)
-                is_subscribed = hasattr(user, 'suscripcion') and user.suscripcion.activa
-
-                if tema.es_premium and (not user.is_authenticated or not is_subscribed):
-                    queryset = queryset.filter(tema__id=tema_id)[:5]
-                else:
-                    queryset = queryset.filter(tema__id=tema_id)
-                    all_questions = list(queryset)
-                    random.shuffle(all_questions)
-                    return all_questions[:20]
-
-            except Tema.DoesNotExist:
-                return Pregunta.objects.none()
-
-        # Filtro por slug de tema (nuevo)
-        if tema_slug is not None:
+        if tema_slug:
             try:
                 tema = Tema.objects.get(slug=tema_slug)
-                is_subscribed = hasattr(user, 'suscripcion') and user.suscripcion.activa
-
-                if tema.es_premium and (not user.is_authenticated or not is_subscribed):
-                    queryset = queryset.filter(tema__slug=tema_slug)[:5]
-                else:
-                    queryset = queryset.filter(tema__slug=tema_slug)
-                    all_questions = list(queryset)
-                    random.shuffle(all_questions)
-                    return all_questions[:20]
-
             except Tema.DoesNotExist:
                 return Pregunta.objects.none()
-        
+
+            user = self.request.user
+            is_subscribed = getattr(getattr(user, 'suscripcion', None), 'activa', False)
+
+            queryset = queryset.filter(tema=tema)
+
+            # gating premium
+            if tema.es_premium and (not user.is_authenticated or not is_subscribed):
+                # muestra 5 primeras (orden estable) para free
+                return queryset.order_by('id')[:5]
+
+            # suscrito o tema no premium → aleatorio y 20 máx (como tenías)
+            return queryset.order_by('?')[:20]
+
+        # si no viene tema_slug devolvemos el QS sin tocar (p.ej. admin/scripts)
         return queryset
+    
+    @action(detail=False, methods=['post'])
+    def corregir(self, request):
+        ids_preguntas = request.data.get('ids', [])
+        if not ids_preguntas:
+            return Response({"error": "No se proporcionaron IDs de preguntas"}, status=status.HTTP_400_BAD_REQUEST)
+        preguntas_corregidas = Pregunta.objects.filter(id__in=ids_preguntas)
+        serializer = self.get_serializer(preguntas_corregidas, many=True)
+        return Response(serializer.data)
+
     
     @action(detail=False, methods=['post'])
     def corregir(self, request):
@@ -158,13 +150,37 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
 class ResultadoTestViewSet(viewsets.ModelViewSet):
     queryset = ResultadoTest.objects.all()
     permission_classes = [permissions.IsAuthenticated]
+
     def get_serializer_class(self):
-        if self.action == 'create': return ResultadoTestCreateSerializer
+        if self.action == 'create':
+            return ResultadoTestCreateSerializer
         return ResultadoTestSerializer
+
     def get_queryset(self):
         return self.queryset.filter(usuario=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        tema_slug = data.get('tema_slug')
+        tema_id = data.get('tema')
+
+        # Si nos mandan slug, lo resolvemos a id
+        if tema_slug and not tema_id:
+            try:
+                tema_obj = Tema.objects.only('id').get(slug=tema_slug)
+                data['tema'] = tema_obj.id
+            except Tema.DoesNotExist:
+                return Response({'error': 'Tema no encontrado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)  # guarda con usuario en perform_create
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         serializer.save(usuario=self.request.user)
+
 
 
 class PostViewSet(viewsets.ReadOnlyModelViewSet):

@@ -41,6 +41,10 @@ class Tema(models.Model):
     bloque = models.ForeignKey(Bloque, on_delete=models.CASCADE, related_name='temas', null=True)
     url_fuente_oficial = models.URLField(blank=True, null=True)
     es_premium = models.BooleanField(default=True)
+    slug = models.SlugField(max_length=255, unique=True, db_index=True)
+
+    def __str__(self):
+        return self.nombre_oficial
     
     class Meta:
         unique_together = ('bloque', 'numero')
