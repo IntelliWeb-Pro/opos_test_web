@@ -263,7 +263,6 @@ admin.site.register(User, CustomUserAdmin)
 
 # --- LÍNEA MODIFICADA ---
 # Ahora registramos Oposicion usando nuestra nueva clase personalizada
-admin.site.register(Oposicion, OposicionAdmin)
 admin.site.register(Bloque, BloqueAdmin)
 admin.site.register(Tema, TemaAdmin)
 admin.site.register(Pregunta)
