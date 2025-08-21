@@ -1,0 +1,10 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls %}
+{% block object-tools-items %}
+  {{ block.super }}
+  {% if import_examen_url %}
+    <li>
+      <a href="{{ import_examen_url }}" class="historylink">Importar examen oficial (CSV)</a>
+    </li>
+  {% endif %}
+{% endblock %}

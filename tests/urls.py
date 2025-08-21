@@ -7,7 +7,8 @@ from .views import (
     ResultadoTestViewSet,
     PostViewSet,
     TestSessionViewSet,
-    ExamenOficialViewSet
+    ExamenOficialViewSet,
+    ImportExamenOficialView
 )
 
 # El router crea automáticamente las URLs para Oposiciones, Temas, etc.
@@ -24,4 +25,6 @@ router.register(r'sesiones', TestSessionViewSet, basename='sesiones')
 # Este archivo ahora SOLO exporta las rutas del router.
 urlpatterns = [
     path('', include(router.urls)),
+    path("api/examenes/importar/", ImportExamenOficialView.as_view(), name="import-examen-oficial"),
+
 ]

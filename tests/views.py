@@ -8,6 +8,7 @@ import traceback
 from datetime import date, timedelta
 
 from django.conf import settings
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Avg, Sum, ExpressionWrapper, FloatField, F
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, permissions, status
@@ -23,6 +24,7 @@ from django_filters.rest_framework import DjangoFilterBackend  # ⬅️ NUEVO
 from .permissions import IsSubscribed
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from .utils.examen_import import import_examen_oficial
 
 from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta, TestSession, ExamenOficial
 from .serializers import (
@@ -641,3 +643,40 @@ class ExamenOficialViewSet(viewsets.ReadOnlyModelViewSet):
             'tiempo_restante': ses.tiempo_restante,
             'config': ses.config,
         }, status=201)
+
+class ImportExamenOficialView(APIView):
+    """
+    POST /api/examenes/importar/
+      - FormData:
+        - file: (CSV)
+        - oposicion: slug o nombre
+      Autorización:
+        - staff autenticado  (Authorization: Bearer ...)
+        - o cabecera X-Import-Key que coincida con settings.EXAMEN_IMPORT_KEY
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        # Seguridad sencilla y práctica:
+        ok = False
+        if request.user and request.user.is_authenticated and request.user.is_staff:
+            ok = True
+        else:
+            provided = request.headers.get("X-Import-Key", "")
+            secret = getattr(settings, "EXAMEN_IMPORT_KEY", "")
+            if secret and provided and provided == secret:
+                ok = True
+        if not ok:
+            return Response({"error": "No autorizado"}, status=403)
+
+        file = request.FILES.get("file")
+        oposicion = request.data.get("oposicion", "").strip()
+        if not file or not oposicion:
+            return Response({"error": "Faltan parámetros: 'file' y 'oposicion'."}, status=400)
+
+        try:
+            stats = import_examen_oficial(file, oposicion)
+            return Response(stats, status=200)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
