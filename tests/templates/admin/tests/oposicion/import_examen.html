@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+  <div class="module">
+    <h2>{{ title }}</h2>
+    <form method="post" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+      <!-- repetir selección para que el action sepa el objeto -->
+      {% for i in ids %}
+        <input type="hidden" name="_selected_action" value="{{ i }}">
+      {% endfor %}
+      <input type="hidden" name="action" value="importar_examen_oficial_action">
+      <input type="hidden" name="apply" value="1">
+
+      <fieldset class="module aligned">
+        {{ form.as_p }}
+      </fieldset>
+
+      <div class="submit-row">
+        <input type="submit" value="Importar" class="default">
+        <a href=".." class="button cancel">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}
