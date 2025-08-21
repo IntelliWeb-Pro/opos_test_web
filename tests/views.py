@@ -101,7 +101,7 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Pregunta.objects.all()
     
     def get_serializer_class(self):
-        if self.action == 'list':
+        if self.action in ('list', 'por_ids', 'detalle'):
             return PreguntaSimpleSerializer
         return PreguntaDetalladaSerializer
 
@@ -110,7 +110,6 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
 
         # ⬅️ nuevo: filtrar por slug del tema
         tema_slug = self.request.query_params.get('tema_slug')
-
         if tema_slug:
             try:
                 tema = Tema.objects.get(slug=tema_slug)
@@ -119,37 +118,44 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
 
             user = self.request.user
             is_subscribed = getattr(getattr(user, 'suscripcion', None), 'activa', False)
-
             queryset = queryset.filter(tema=tema)
 
             # gating premium
             if tema.es_premium and (not user.is_authenticated or not is_subscribed):
-                # muestra 5 primeras (orden estable) para free
                 return queryset.order_by('id')[:5]
 
-            # suscrito o tema no premium → aleatorio y 20 máx (como tenías)
             return queryset.order_by('?')[:20]
 
-        # si no viene tema_slug devolvemos el QS sin tocar (p.ej. admin/scripts)
         return queryset
-    
+
     @action(detail=False, methods=['post'])
     def corregir(self, request):
+        """
+        body: {"ids":[1,2,3]}
+        Devuelve preguntas con serializer DETALLADO (incluye qué respuesta es correcta).
+        """
         ids_preguntas = request.data.get('ids', [])
         if not ids_preguntas:
             return Response({"error": "No se proporcionaron IDs de preguntas"}, status=status.HTTP_400_BAD_REQUEST)
-        preguntas_corregidas = Pregunta.objects.filter(id__in=ids_preguntas)
+        preguntas_corregidas = Pregunta.objects.filter(id__in=ids_preguntas).prefetch_related('respuestas', 'tema')
         serializer = self.get_serializer(preguntas_corregidas, many=True)
         return Response(serializer.data)
 
-    
-    @action(detail=False, methods=['post'])
-    def corregir(self, request):
-        ids_preguntas = request.data.get('ids', [])
-        if not ids_preguntas: return Response({"error": "No se proporcionaron IDs de preguntas"}, status=status.HTTP_400_BAD_REQUEST)
-        preguntas_corregidas = Pregunta.objects.filter(id__in=ids_preguntas)
-        serializer = self.get_serializer(preguntas_corregidas, many=True)
-        return Response(serializer.data)
+    @action(detail=False, methods=['post'], url_path='por-ids')
+    def por_ids(self, request):
+        """
+        body: {"ids":[1,2,3]}
+        Devuelve preguntas + respuestas SIN el flag es_correcta (uso en examen en curso).
+        """
+        ids = request.data.get('ids', [])
+        if not isinstance(ids, list) or not ids:
+            return Response({"error": "Proporciona una lista 'ids'."}, status=400)
+        qs = Pregunta.objects.filter(id__in=ids).prefetch_related('respuestas', 'tema')
+        data = PreguntaSimpleSerializer(qs, many=True).data
+        # mantener orden solicitado
+        data_map = {p["id"]: p for p in data}
+        ordenados = [data_map[i] for i in ids if i in data_map]
+        return Response(ordenados)
 
     @action(detail=False, methods=['get'])
     def detalle(self, request):
@@ -167,9 +173,8 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
 
         qs = Pregunta.objects.filter(id__in=ids).prefetch_related('respuestas')
         data = PreguntaSimpleSerializer(qs, many=True).data
-        # PreguntaSimpleSerializer ya NO incluye es_correcta → seguro
-        # (si incluyera, aquí podríamos borrar esos campos manualmente)
         return Response(data)
+
 
 
 class ResultadoTestViewSet(viewsets.ModelViewSet):
@@ -556,7 +561,7 @@ class TestSessionViewSet(viewsets.ModelViewSet):
         tipo = self.request.query_params.get("tipo")
         if pendientes:
             qs = qs.filter(estado__in=["en_curso", "abandonado"])
-        if tipo in {"tema", "repaso"}:
+        if tipo in {"tema", "repaso", "examen"}:
             qs = qs.filter(tipo=tipo)
         return qs
 
@@ -573,6 +578,66 @@ class TestSessionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    # ⬇️ Nuevo: creación especial para tipo="examen"
+    def create(self, request, *args, **kwargs):
+        tipo = (request.data.get("tipo") or "").lower()
+        if tipo != "examen":
+            return super().create(request, *args, **kwargs)
+
+        cfg = request.data.get("config") or {}
+        opos_slug = cfg.get("oposicion") or request.data.get("oposicion")
+        if not opos_slug:
+            return Response({"error": "Falta 'config.oposicion'."}, status=400)
+
+        # localizar oposición
+        try:
+            opos = Oposicion.objects.get(slug=opos_slug)
+        except Oposicion.DoesNotExist:
+            return Response({"error": "Oposición no encontrada."}, status=404)
+
+        # Preferimos los temas especiales importados
+        tema_b1 = Tema.objects.filter(bloque__oposicion=opos, slug="examen-oficial-b1").first()
+        tema_b2 = Tema.objects.filter(bloque__oposicion=opos, slug="examen-oficial-b2").first()
+
+        if tema_b1 and tema_b2:
+            ids_b1 = list(Pregunta.objects.filter(tema=tema_b1).values_list("id", flat=True))
+            ids_b2 = list(Pregunta.objects.filter(tema=tema_b2).values_list("id", flat=True))
+        else:
+            # Fallback: por bloques completos
+            ids_b1 = list(Pregunta.objects.filter(tema__bloque__oposicion=opos, tema__bloque__numero=1).values_list("id", flat=True))
+            ids_b2 = list(Pregunta.objects.filter(tema__bloque__oposicion=opos, tema__bloque__numero=2).values_list("id", flat=True))
+
+        if not ids_b1 or not ids_b2:
+            return Response({"error": "No hay preguntas suficientes para generar el examen."}, status=400)
+
+        random.shuffle(ids_b1); random.shuffle(ids_b2)
+        pick_b1 = ids_b1[:60]
+        pick_b2 = ids_b2[:50]
+        preguntas_ids = pick_b1 + pick_b2
+        random.shuffle(preguntas_ids)
+
+        payload = {
+            "tipo": "examen",
+            "preguntas_ids": preguntas_ids,
+            "idx_actual": 0,
+            "respuestas": {},
+            "tiempo_restante": 90 * 60,
+            "estado": "en_curso",
+            "config": {
+                "oposicion": opos.slug,
+                "minutos": 90,
+                "n_b1": 60, "n_b2": 50,
+                "temas": ["examen-oficial-b1", "examen-oficial-b2"],
+            },
+        }
+
+        ser = self.get_serializer(data=payload)
+        ser.is_valid(raise_exception=True)
+        self.perform_create(ser)
+        headers = self.get_success_headers(ser.data)
+        return Response(ser.data, status=status.HTTP_201_CREATED, headers=headers)
+
 
 class ExamenOficialViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -598,14 +663,21 @@ class ExamenOficialViewSet(viewsets.ReadOnlyModelViewSet):
         user = request.user
         op = plantilla.oposicion
 
-        # 60 del bloque 1, 50 del bloque 2 (por defecto de la plantilla)
         n1 = int(request.data.get('n1', plantilla.preguntas_bloque1))
         n2 = int(request.data.get('n2', plantilla.preguntas_bloque2))
         mezclar = str(request.data.get('mezclar', '1')) in {'1', 'true', 'True'}
 
-        # Preguntas por bloque
-        qs_b1 = Pregunta.objects.filter(tema__bloque__oposicion=op, tema__bloque__numero=1)
-        qs_b2 = Pregunta.objects.filter(tema__bloque__oposicion=op, tema__bloque__numero=2)
+        # Preferir temas especiales de examen oficial
+        tema_b1 = Tema.objects.filter(bloque__oposicion=op, slug="examen-oficial-b1").first()
+        tema_b2 = Tema.objects.filter(bloque__oposicion=op, slug="examen-oficial-b2").first()
+
+        if tema_b1 and tema_b2:
+            qs_b1 = Pregunta.objects.filter(tema=tema_b1)
+            qs_b2 = Pregunta.objects.filter(tema=tema_b2)
+        else:
+            # Fallback a bloques
+            qs_b1 = Pregunta.objects.filter(tema__bloque__oposicion=op, tema__bloque__numero=1)
+            qs_b2 = Pregunta.objects.filter(tema__bloque__oposicion=op, tema__bloque__numero=2)
 
         ids_b1 = list(qs_b1.order_by('?').values_list('id', flat=True)[:n1])
         ids_b2 = list(qs_b2.order_by('?').values_list('id', flat=True)[:n2])
@@ -636,13 +708,13 @@ class ExamenOficialViewSet(viewsets.ReadOnlyModelViewSet):
                 }
             }
         )
-        # Respondemos con la sesión y, si quieres, con el “esqueleto” del examen
         return Response({
             'id': str(ses.id),
             'count': len(preguntas_ids),
             'tiempo_restante': ses.tiempo_restante,
             'config': ses.config,
         }, status=201)
+
 
 class ImportExamenOficialView(APIView):
     """
