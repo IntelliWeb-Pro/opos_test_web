@@ -21,13 +21,15 @@ from django.utils import timezone
 from dj_rest_auth.views import PasswordResetView
 from django_filters.rest_framework import DjangoFilterBackend  # ⬅️ NUEVO
 from .permissions import IsSubscribed
+from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
-from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta, TestSession
+from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta, TestSession, ExamenOficial
 from .serializers import (
     OposicionSerializer, OposicionListSerializer,
     TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
-    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, TestSessionSerializer
+    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, TestSessionSerializer, ExamenOficialSerializer
 )
 
 # --- VISTAS DEL ROUTER ---
@@ -146,6 +148,26 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         preguntas_corregidas = Pregunta.objects.filter(id__in=ids_preguntas)
         serializer = self.get_serializer(preguntas_corregidas, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def detalle(self, request):
+        """
+        GET /api/preguntas/detalle/?ids=1,2,3
+        Devuelve preguntas + respuestas SIN el flag es_correcta.
+        """
+        ids = request.query_params.get('ids', '')
+        try:
+            ids = [int(x) for x in ids.split(',') if x.strip().isdigit()]
+        except ValueError:
+            ids = []
+        if not ids:
+            return Response([], status=200)
+
+        qs = Pregunta.objects.filter(id__in=ids).prefetch_related('respuestas')
+        data = PreguntaSimpleSerializer(qs, many=True).data
+        # PreguntaSimpleSerializer ya NO incluye es_correcta → seguro
+        # (si incluyera, aquí podríamos borrar esos campos manualmente)
+        return Response(data)
 
 
 class ResultadoTestViewSet(viewsets.ModelViewSet):
@@ -549,3 +571,73 @@ class TestSessionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+class ExamenOficialViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    /api/examenes-oficiales/?oposicion=<slug>    -> lista plantillas activas
+    /api/examenes-oficiales/<slug>/              -> detalle de plantilla
+    /api/examenes-oficiales/<slug>/iniciar/     -> POST: crea sesión (tipo=examen)
+    """
+    queryset = ExamenOficial.objects.filter(activo=True).select_related('oposicion')
+    serializer_class = ExamenOficialSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'slug'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        opos_slug = self.request.query_params.get('oposicion')
+        if opos_slug:
+            qs = qs.filter(oposicion__slug=opos_slug)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def iniciar(self, request, slug=None):
+        plantilla = self.get_object()
+        user = request.user
+        op = plantilla.oposicion
+
+        # 60 del bloque 1, 50 del bloque 2 (por defecto de la plantilla)
+        n1 = int(request.data.get('n1', plantilla.preguntas_bloque1))
+        n2 = int(request.data.get('n2', plantilla.preguntas_bloque2))
+        mezclar = str(request.data.get('mezclar', '1')) in {'1', 'true', 'True'}
+
+        # Preguntas por bloque
+        qs_b1 = Pregunta.objects.filter(tema__bloque__oposicion=op, tema__bloque__numero=1)
+        qs_b2 = Pregunta.objects.filter(tema__bloque__oposicion=op, tema__bloque__numero=2)
+
+        ids_b1 = list(qs_b1.order_by('?').values_list('id', flat=True)[:n1])
+        ids_b2 = list(qs_b2.order_by('?').values_list('id', flat=True)[:n2])
+
+        preguntas_ids = ids_b1 + ids_b2
+        if not preguntas_ids:
+            return Response({'error': 'No hay preguntas suficientes para generar el examen.'}, status=400)
+
+        if mezclar:
+            random.shuffle(preguntas_ids)
+
+        minutos = int(request.data.get('minutos', plantilla.duracion_minutos))
+        ses = TestSession.objects.create(
+            user=user,
+            tipo='examen',
+            preguntas_ids=preguntas_ids,
+            idx_actual=0,
+            respuestas={},
+            tiempo_restante=max(1, minutos)*60,
+            estado='en_curso',
+            config={
+                'oposicion': op.slug,
+                'examen_slug': plantilla.slug,
+                'plantilla': {
+                    'preguntas_bloque1': plantilla.preguntas_bloque1,
+                    'preguntas_bloque2': plantilla.preguntas_bloque2,
+                    'duracion_minutos': plantilla.duracion_minutos,
+                }
+            }
+        )
+        # Respondemos con la sesión y, si quieres, con el “esqueleto” del examen
+        return Response({
+            'id': str(ses.id),
+            'count': len(preguntas_ids),
+            'tiempo_restante': ses.tiempo_restante,
+            'config': ses.config,
+        }, status=201)

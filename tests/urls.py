@@ -6,7 +6,8 @@ from .views import (
     PreguntaViewSet,
     ResultadoTestViewSet,
     PostViewSet,
-    TestSessionViewSet
+    TestSessionViewSet,
+    ExamenOficialViewSet
 )
 
 # El router crea automáticamente las URLs para Oposiciones, Temas, etc.
@@ -16,6 +17,7 @@ router.register(r'temas', TemaViewSet, basename='tema')
 router.register(r'preguntas', PreguntaViewSet, basename='pregunta')
 router.register(r'resultados', ResultadoTestViewSet, basename='resultado')
 router.register(r'blog', PostViewSet, basename='post') 
+router.register(r'examenes-oficiales', ExamenOficialViewSet, basename='examen-oficial')
 router.register(r'sesiones', TestSessionViewSet, basename='sesiones')
 
 

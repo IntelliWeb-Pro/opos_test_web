@@ -129,6 +129,7 @@ class TestSession(models.Model):
     TIPOS = (
         ("tema", "Tema"),
         ("repaso", "Repaso"),
+        ("examen", "Examen oficial")
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -152,3 +153,34 @@ class TestSession(models.Model):
 
     def __str__(self):
         return f"{self.id} · {self.user} · {self.tipo} · {self.estado}"
+
+class ExamenOficial(models.Model):
+    """
+    Plantilla de examen oficial para una oposición.
+    Por ahora: 60 preguntas del bloque 1 + 50 del bloque 2, 90 minutos.
+    Si el día de mañana cambia, creamos más plantillas por oposición.
+    """
+    oposicion = models.ForeignKey('Oposicion', on_delete=models.CASCADE, related_name='examenes')
+    titulo = models.CharField(max_length=255, default='Examen oficial')
+    slug = models.SlugField(max_length=255, unique=True)
+    descripcion = models.TextField(blank=True, null=True)
+
+    preguntas_bloque1 = models.PositiveIntegerField(default=60)
+    preguntas_bloque2 = models.PositiveIntegerField(default=50)
+    duracion_minutos = models.PositiveIntegerField(default=90)
+
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('oposicion', 'slug')
+        ordering = ['-creado_en']
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.titulo)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.oposicion.nombre} · {self.titulo} ({self.preguntas_bloque1}+{self.preguntas_bloque2} · {self.duracion_minutos}min)"

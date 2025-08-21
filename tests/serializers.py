@@ -3,7 +3,7 @@
 from rest_framework import serializers
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from django.contrib.auth import get_user_model
-from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion, TestSession
+from .models import Oposicion, Bloque, Tema, Pregunta, Respuesta, ResultadoTest, Post, Suscripcion, TestSession, ExamenOficial
 
 from dj_rest_auth.serializers import PasswordResetSerializer, UserDetailsSerializer
 from allauth.account.utils import user_pk_to_url_str
@@ -195,3 +195,16 @@ class TestSessionSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         validated_data = self._coerce_alias(validated_data)
         return super().update(instance, validated_data)
+
+class ExamenOficialSerializer(serializers.ModelSerializer):
+    oposicion_slug = serializers.CharField(source='oposicion.slug', read_only=True)
+    oposicion_nombre = serializers.CharField(source='oposicion.nombre', read_only=True)
+
+    class Meta:
+        model = ExamenOficial
+        fields = [
+            'id', 'titulo', 'slug', 'descripcion',
+            'oposicion_slug', 'oposicion_nombre',
+            'preguntas_bloque1', 'preguntas_bloque2',
+            'duracion_minutos', 'activo',
+        ]
