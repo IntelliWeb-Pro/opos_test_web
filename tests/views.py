@@ -586,7 +586,11 @@ class TestSessionViewSet(viewsets.ModelViewSet):
             return super().create(request, *args, **kwargs)
 
         cfg = request.data.get("config") or {}
-        opos_slug = cfg.get("oposicion") or request.data.get("oposicion")
+        opos_slug = (
+            cfg.get("oposicion")
+            or request.data.get("oposicion")
+            or request.query_params.get("oposicion")
+        )
         if not opos_slug:
             return Response({"error": "Falta 'config.oposicion'."}, status=400)
 
