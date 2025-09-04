@@ -6,10 +6,10 @@ import os
 import sys
 import traceback
 from datetime import date, timedelta
+from collections import defaultdict
 
 from django.conf import settings
-from rest_framework.parsers import MultiPartParser, FormParser
-from django.db.models import Avg, Sum, ExpressionWrapper, FloatField, F
+from django.db.models import Avg, Sum, ExpressionWrapper, FloatField, F, Q
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
@@ -22,17 +22,69 @@ from django.utils import timezone
 from dj_rest_auth.views import PasswordResetView
 from django_filters.rest_framework import DjangoFilterBackend  # ⬅️ NUEVO
 from .permissions import IsSubscribed
-from django.shortcuts import get_object_or_404
-from django.db.models import Q
-from .utils.examen_import import import_examen_oficial
 
-from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta, TestSession, ExamenOficial
+from .models import Oposicion, Tema, Pregunta, ResultadoTest, Suscripcion, Post, CodigoVerificacion, Respuesta, TestSession
 from .serializers import (
     OposicionSerializer, OposicionListSerializer,
     TemaSerializer, PreguntaSimpleSerializer,
     PreguntaDetalladaSerializer, ResultadoTestSerializer, ResultadoTestCreateSerializer,
-    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, TestSessionSerializer, ExamenOficialSerializer
+    PostListSerializer, PostDetailSerializer, CustomRegisterSerializer, TestSessionSerializer
 )
+
+# --- Helpers para examen oficial ---
+def _group_ids_by_tema(qs):
+    """
+    Agrupa IDs de preguntas por tema. Devuelve dict {tema_id: [ids]}
+    """
+    by_tema = defaultdict(list)
+    for pid, tid in qs.values_list("id", "tema_id"):
+        by_tema[tid].append(pid)
+    # barajar dentro de cada tema para variedad
+    for tid in by_tema:
+        random.shuffle(by_tema[tid])
+    return by_tema
+
+def _pick_balanced(by_tema, n):
+    """
+    Selección equilibrada por temas: round-robin entre temas hasta completar n o agotar.
+    by_tema: dict {tema_id: [ids]}
+    """
+    if n <= 0 or not by_tema:
+        return []
+
+    # clona listas
+    pools = {k: v[:] for k, v in by_tema.items() if v}
+    order = list(pools.keys())
+    random.shuffle(order)
+
+    result = []
+    while len(result) < n and any(pools.values()):
+        for tid in order:
+            if len(result) >= n:
+                break
+            lst = pools.get(tid, [])
+            if lst:
+                result.append(lst.pop())
+        # eliminar temas vacíos para no iterar de más
+        order = [tid for tid in order if pools.get(tid)]
+        if not order:
+            break
+    return result
+
+def _temas_psico_qs(opos):
+    """
+    Heurística para detectar temas psicotécnicos en Bloque 1:
+    slug o nombre con 'psico' / 'psicotécnico' / 'psicotecnico'
+    """
+    return Tema.objects.filter(
+        bloque__oposicion=opos,
+        bloque__numero=1
+    ).filter(
+        Q(slug__icontains="psico") |
+        Q(nombre_oficial__icontains="psico") |
+        Q(nombre_oficial__icontains="psicotécnico") |
+        Q(nombre_oficial__icontains="psicotecnico")
+    )
 
 # --- VISTAS DEL ROUTER ---
 class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -78,8 +130,6 @@ class OposicionViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": "Error interno del servidor al listar oposiciones."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# tests/views.py
-
 class TemaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Tema.objects.all()
     serializer_class = TemaSerializer
@@ -88,12 +138,10 @@ class TemaViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # opcional: permitir ?oposicion=<slug_oposicion>
         opos_slug = self.request.query_params.get('oposicion')
         if opos_slug:
             qs = qs.filter(bloque__oposicion__slug=opos_slug)
         return qs
-
 
 
 class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
@@ -176,7 +224,6 @@ class PreguntaViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(data)
 
 
-
 class ResultadoTestViewSet(viewsets.ModelViewSet):
     queryset = ResultadoTest.objects.all()
     permission_classes = [permissions.IsAuthenticated]
@@ -212,7 +259,6 @@ class ResultadoTestViewSet(viewsets.ModelViewSet):
         serializer.save(usuario=self.request.user)
 
 
-
 class PostViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Post.objects.filter(estado='publicado').select_related('autor')
     permission_classes = [permissions.AllowAny]
@@ -226,6 +272,7 @@ class PostViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         print("--- BLOG: Iniciando listado de posts ---", file=sys.stderr, flush=True)
         return super().list(request, *args, **kwargs)
+
 
 # --- VISTAS ESPECÍFICAS (FUERA DEL ROUTER) ---
 class EstadisticasUsuarioView(APIView):
@@ -249,13 +296,30 @@ class EstadisticasUsuarioView(APIView):
             media_general = (total_aciertos * 100.0 / total_preguntas_global) if total_preguntas_global > 0 else 0
 
             print("--- STATS: Calculando estadísticas por oposición...", file=sys.stderr, flush=True)
-            stats_oposicion = resultados.values('tema__bloque__oposicion__nombre').annotate(media_oposicion=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField())).order_by('-media_oposicion')
+            stats_oposicion = resultados.values('tema__bloque__oposicion__nombre').annotate(
+                media_oposicion=ExpressionWrapper(
+                    (Avg('puntuacion') * 100.0) / Avg('total_preguntas'),
+                    output_field=FloatField()
+                )
+            ).order_by('-media_oposicion')
 
             print("--- STATS: Calculando histórico...", file=sys.stderr, flush=True)
-            historico = resultados.order_by('fecha')[:15].annotate(media_test=ExpressionWrapper((F('puntuacion') * 100.0) / F('total_preguntas'), output_field=FloatField()))
+            historico = resultados.order_by('fecha')[:15].annotate(
+                media_test=ExpressionWrapper(
+                    (F('puntuacion') * 100.0) / F('total_preguntas'),
+                    output_field=FloatField()
+                )
+            )
 
             print("--- STATS: Calculando estadísticas por tema...", file=sys.stderr, flush=True)
-            stats_tema = resultados.values('tema__id', 'tema__nombre_oficial', 'tema__bloque__oposicion__nombre', 'tema__url_fuente_oficial').annotate(media_tema=ExpressionWrapper((Avg('puntuacion') * 100.0) / Avg('total_preguntas'), output_field=FloatField()))
+            stats_tema = resultados.values(
+                'tema__id', 'tema__nombre_oficial', 'tema__bloque__oposicion__nombre', 'tema__url_fuente_oficial'
+            ).annotate(
+                media_tema=ExpressionWrapper(
+                    (Avg('puntuacion') * 100.0) / Avg('total_preguntas'),
+                    output_field=FloatField()
+                )
+            )
 
             print("--- STATS: Calculando puntos fuertes y débiles...", file=sys.stderr, flush=True)
             puntos_fuertes = sorted([t for t in stats_tema if t['media_tema'] is not None], key=lambda x: x['media_tema'], reverse=True)[:5]
@@ -265,10 +329,24 @@ class EstadisticasUsuarioView(APIView):
             data = {
                 "media_general": round(media_general, 2),
                 "resumen_aciertos": { "aciertos": total_aciertos, "fallos": total_fallos },
-                "stats_por_oposicion": [{"oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_oposicion'], 2)} for item in stats_oposicion],
-                "historico_resultados": [{"fecha": item.fecha.strftime('%d/%m/%Y'), "nota": round(item.media_test, 2)} for item in historico],
-                "puntos_fuertes": [{"tema_id": item['tema__id'], "tema": item['tema__nombre_oficial'], "oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_fuertes],
-                "puntos_debiles": [{"tema_id": item['tema__id'], "tema": item['tema__nombre_oficial'], "oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_tema'], 2)} for item in puntos_debiles],
+                "stats_por_oposicion": [
+                    {"oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_oposicion'], 2)}
+                    for item in stats_oposicion
+                ],
+                "historico_resultados": [
+                    {"fecha": item.fecha.strftime('%d/%m/%Y'), "nota": round(item.media_test, 2)}
+                    for item in historico
+                ],
+                "puntos_fuertes": [
+                    {"tema_id": item['tema__id'], "tema": item['tema__nombre_oficial'],
+                     "oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_tema'], 2)}
+                    for item in puntos_fuertes
+                ],
+                "puntos_debiles": [
+                    {"tema_id": item['tema__id'], "tema": item['tema__nombre_oficial'],
+                     "oposicion": item['tema__bloque__oposicion__nombre'], "media": round(item['media_tema'], 2)}
+                    for item in puntos_debiles
+                ],
             }
             
             print("--- STATS: Proceso completado con éxito. ---", file=sys.stderr, flush=True)
@@ -279,13 +357,17 @@ class EstadisticasUsuarioView(APIView):
             traceback.print_exc(file=sys.stderr)
             return Response({"error": "Error interno del servidor al calcular las estadísticas."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 class RankingSemanalView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request, *args, **kwargs):
         today = date.today()
         start_of_week = today - timedelta(days=today.weekday())
         resultados_semanales = ResultadoTest.objects.filter(fecha__gte=start_of_week)
-        ranking_data = resultados_semanales.values('usuario__username').annotate(puntuacion_total=Sum('puntuacion'), preguntas_totales=Sum('total_preguntas')).filter(preguntas_totales__gt=0)
+        ranking_data = resultados_semanales.values('usuario__username').annotate(
+            puntuacion_total=Sum('puntuacion'),
+            preguntas_totales=Sum('total_preguntas')
+        ).filter(preguntas_totales__gt=0)
         ranking_list = []
         for item in ranking_data:
             porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
@@ -299,28 +381,42 @@ class RankingSemanalView(APIView):
         response_data = {'podium': ranking_list[:3], 'user_rank': user_rank}
         return Response(response_data)
 
+
 class AnalisisRefuerzoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request, *args, **kwargs):
         usuario = request.user
         resultados = ResultadoTest.objects.filter(usuario=usuario)
-        if not resultados.exists(): return Response({"message": "No hay suficientes datos para generar un análisis."}, status=200)
-        stats_tema = resultados.values('tema__id', 'tema__nombre_oficial', 'tema__bloque__oposicion__nombre', 'tema__url_fuente_oficial').annotate(puntuacion_total=Sum('puntuacion'), preguntas_totales=Sum('total_preguntas')).filter(preguntas_totales__gt=0)
+        if not resultados.exists():
+            return Response({"message": "No hay suficientes datos para generar un análisis."}, status=200)
+        stats_tema = resultados.values(
+            'tema__id', 'tema__nombre_oficial', 'tema__bloque__oposicion__nombre', 'tema__url_fuente_oficial'
+        ).annotate(
+            puntuacion_total=Sum('puntuacion'),
+            preguntas_totales=Sum('total_preguntas')
+        ).filter(preguntas_totales__gt=0)
         temas_analizados = []
         for item in stats_tema:
             porcentaje = (item['puntuacion_total'] * 100.0) / item['preguntas_totales']
-            temas_analizados.append({'tema_id': item['tema__id'], 'tema_nombre': item['tema__nombre_oficial'], 'oposicion_nombre': item['tema__bloque__oposicion__nombre'], 'url_boe': item['tema__url_fuente_oficial'], 'porcentaje_aciertos': round(porcentaje, 2)})
+            temas_analizados.append({
+                'tema_id': item['tema__id'],
+                'tema_nombre': item['tema__nombre_oficial'],
+                'oposicion_nombre': item['tema__bloque__oposicion__nombre'],
+                'url_boe': item['tema__url_fuente_oficial'],
+                'porcentaje_aciertos': round(porcentaje, 2)
+            })
         dominados = sorted([t for t in temas_analizados if t['porcentaje_aciertos'] > 90], key=lambda x: x['porcentaje_aciertos'], reverse=True)[:5]
         repasar = sorted([t for t in temas_analizados if 60 <= t['porcentaje_aciertos'] <= 90], key=lambda x: x['porcentaje_aciertos'])[:5]
         profundizar = sorted([t for t in temas_analizados if t['porcentaje_aciertos'] < 60], key=lambda x: x['porcentaje_aciertos'])[:5]
         response_data = {'dominados': dominados, 'repasar': repasar, 'profundizar': profundizar}
         return Response(response_data)
 
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
 class CreateCheckoutSessionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request, *args, **kwargs):
-        # Nuevo: soporte de múltiples planes y prueba de 7 días (Stripe gestiona el trial)
         plan = (request.data.get('plan') or '').lower()
         plan_env = {
             'bronce': os.environ.get('NEXT_PUBLIC_STRIPE_PRICE_BRONCE'),
@@ -331,7 +427,6 @@ class CreateCheckoutSessionView(APIView):
         price_id = None
         if plan:
             price_id = plan_env.get(plan)
-        # retrocompatibilidad: si no se envía plan, usamos la variable existente
         if not price_id:
             price_id = os.environ.get('STRIPE_PRICE_ID')
         if not price_id:
@@ -340,10 +435,7 @@ class CreateCheckoutSessionView(APIView):
             checkout_session = stripe.checkout.Session.create(
                 line_items=[{'price': price_id, 'quantity': 1}],
                 mode='subscription',
-                # Prueba gratuita de 7 días (opción B)
-                subscription_data={
-                    'trial_period_days': 7,
-                },
+                subscription_data={'trial_period_days': 7},
                 success_url='https://www.testestado.es/pago-exitoso?session_id={CHECKOUT_SESSION_ID}',
                 cancel_url='https://www.testestado.es/pago-cancelado',
                 customer_email=request.user.email
@@ -351,6 +443,7 @@ class CreateCheckoutSessionView(APIView):
             return Response({'sessionId': checkout_session.id})
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class StripeWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -376,6 +469,7 @@ class StripeWebhookView(APIView):
             except User.DoesNotExist:
                 return Response(status=400)
         return Response(status=200)
+
 
 class ContactoView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -419,6 +513,7 @@ class ContactoView(APIView):
             print(f"--- ERROR ATRAPADO (CONTACTO): {type(e).__name__} - {e}", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
             return Response({"error": "Hubo un problema al enviar tu mensaje. Por favor, inténtalo de nuevo más tarde."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class CustomRegisterView(CreateAPIView):
     serializer_class = CustomRegisterSerializer
@@ -464,6 +559,7 @@ class CustomRegisterView(CreateAPIView):
             traceback.print_exc(file=sys.stderr)
             return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 class VerificarCuentaView(APIView):
     permission_classes = [permissions.AllowAny]
     def post(self, request, *args, **kwargs):
@@ -489,6 +585,7 @@ class VerificarCuentaView(APIView):
             return Response({'error': 'El código o el email son incorrectos.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': 'Ha ocurrido un error inesperado en el servidor.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class CustomPasswordResetView(PasswordResetView):
     def post(self, request, *args, **kwargs):
@@ -516,6 +613,7 @@ class CustomPasswordResetView(PasswordResetView):
             traceback.print_exc(file=sys.stderr)
             return Response({"error": f"Error interno del servidor: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 class DemoQuestionsView(APIView):
     """
     Devuelve N preguntas aleatorias (por defecto 15), públicas,
@@ -540,9 +638,11 @@ class DemoQuestionsView(APIView):
         data = PreguntaSimpleSerializer(qs, many=True).data
         return Response({"count": len(data), "results": data})
 
+
 class IsOwner(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         return getattr(obj, "user_id", None) == request.user.id
+
 
 class TestSessionViewSet(viewsets.ModelViewSet):
     """
@@ -567,7 +667,7 @@ class TestSessionViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         qs = self.get_queryset()
-        limit = request.query_params.get("limit")
+        limit = self.request.query_params.get("limit")
         if limit:
             try:
                 qs = qs[:int(limit)]
@@ -579,7 +679,7 @@ class TestSessionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    # ⬇️ Nuevo: creación especial para tipo="examen"
+    # ⬇️ Creación especial para tipo="examen" (plantilla completa con 90 minutos)
     def create(self, request, *args, **kwargs):
         tipo = (request.data.get("tipo") or "").lower()
         if tipo != "examen":
@@ -600,25 +700,46 @@ class TestSessionViewSet(viewsets.ModelViewSet):
         except Oposicion.DoesNotExist:
             return Response({"error": "Oposición no encontrada."}, status=404)
 
-        # Preferimos los temas especiales importados
-        tema_b1 = Tema.objects.filter(bloque__oposicion=opos, slug="examen-oficial-b1").first()
-        tema_b2 = Tema.objects.filter(bloque__oposicion=opos, slug="examen-oficial-b2").first()
+        # ==== BLOQUE 1 ====
+        temas_b1 = Tema.objects.filter(bloque__oposicion=opos, bloque__numero=1)
+        temas_psico = _temas_psico_qs(opos)
+        temas_b1_otros = temas_b1.exclude(id__in=list(temas_psico.values_list("id", flat=True)))
 
-        if tema_b1 and tema_b2:
-            ids_b1 = list(Pregunta.objects.filter(tema=tema_b1).values_list("id", flat=True))
-            ids_b2 = list(Pregunta.objects.filter(tema=tema_b2).values_list("id", flat=True))
-        else:
-            # Fallback: por bloques completos
-            ids_b1 = list(Pregunta.objects.filter(tema__bloque__oposicion=opos, tema__bloque__numero=1).values_list("id", flat=True))
-            ids_b2 = list(Pregunta.objects.filter(tema__bloque__oposicion=opos, tema__bloque__numero=2).values_list("id", flat=True))
+        qs_b1_psico = Pregunta.objects.filter(tema__in=temas_psico)
+        qs_b1_otros = Pregunta.objects.filter(tema__in=temas_b1_otros)
 
-        if not ids_b1 or not ids_b2:
+        b1_psico_by_tema = _group_ids_by_tema(qs_b1_psico)
+        b1_otros_by_tema = _group_ids_by_tema(qs_b1_otros)
+
+        target_psico = 30
+        target_otros = 30
+
+        pick_b1_psico = _pick_balanced(b1_psico_by_tema, target_psico)
+        pick_b1_otros = _pick_balanced(b1_otros_by_tema, target_otros)
+
+        # Rellenos si falta en algún grupo
+        faltan_psico = max(0, target_psico - len(pick_b1_psico))
+        faltan_otros = max(0, target_otros - len(pick_b1_otros))
+
+        if faltan_psico > 0 and b1_otros_by_tema:
+            extra_otros = _pick_balanced(b1_otros_by_tema, faltan_psico)
+            pick_b1_psico += extra_otros
+        if faltan_otros > 0 and b1_psico_by_tema:
+            extra_psico = _pick_balanced(b1_psico_by_tema, faltan_otros)
+            pick_b1_otros += extra_psico
+
+        pick_b1 = (pick_b1_psico + pick_b1_otros)[:60]  # por si sobra
+
+        # ==== BLOQUE 2 ====
+        temas_b2 = Tema.objects.filter(bloque__oposicion=opos, bloque__numero=2)
+        qs_b2 = Pregunta.objects.filter(tema__in=temas_b2)
+        b2_by_tema = _group_ids_by_tema(qs_b2)
+        pick_b2 = _pick_balanced(b2_by_tema, 50)
+
+        preguntas_ids = pick_b1 + pick_b2
+        if not preguntas_ids:
             return Response({"error": "No hay preguntas suficientes para generar el examen."}, status=400)
 
-        random.shuffle(ids_b1); random.shuffle(ids_b2)
-        pick_b1 = ids_b1[:60]
-        pick_b2 = ids_b2[:50]
-        preguntas_ids = pick_b1 + pick_b2
         random.shuffle(preguntas_ids)
 
         payload = {
@@ -626,13 +747,14 @@ class TestSessionViewSet(viewsets.ModelViewSet):
             "preguntas_ids": preguntas_ids,
             "idx_actual": 0,
             "respuestas": {},
-            "tiempo_restante": 90 * 60,
+            "tiempo_restante": 90 * 60,  # 90 minutos
             "estado": "en_curso",
             "config": {
                 "oposicion": opos.slug,
                 "minutos": 90,
-                "n_b1": 60, "n_b2": 50,
-                "temas": ["examen-oficial-b1", "examen-oficial-b2"],
+                "b1_psico": min(30, len(pick_b1_psico)),
+                "b1_otros": min(30, len(pick_b1_otros)),
+                "b2": len(pick_b2),
             },
         }
 
@@ -641,118 +763,3 @@ class TestSessionViewSet(viewsets.ModelViewSet):
         self.perform_create(ser)
         headers = self.get_success_headers(ser.data)
         return Response(ser.data, status=status.HTTP_201_CREATED, headers=headers)
-
-
-class ExamenOficialViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    /api/examenes-oficiales/?oposicion=<slug>    -> lista plantillas activas
-    /api/examenes-oficiales/<slug>/              -> detalle de plantilla
-    /api/examenes-oficiales/<slug>/iniciar/     -> POST: crea sesión (tipo=examen)
-    """
-    queryset = ExamenOficial.objects.filter(activo=True).select_related('oposicion')
-    serializer_class = ExamenOficialSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    lookup_field = 'slug'
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        opos_slug = self.request.query_params.get('oposicion')
-        if opos_slug:
-            qs = qs.filter(oposicion__slug=opos_slug)
-        return qs
-
-    @action(detail=True, methods=['post'])
-    def iniciar(self, request, slug=None):
-        plantilla = self.get_object()
-        user = request.user
-        op = plantilla.oposicion
-
-        n1 = int(request.data.get('n1', plantilla.preguntas_bloque1))
-        n2 = int(request.data.get('n2', plantilla.preguntas_bloque2))
-        mezclar = str(request.data.get('mezclar', '1')) in {'1', 'true', 'True'}
-
-        # Preferir temas especiales de examen oficial
-        tema_b1 = Tema.objects.filter(bloque__oposicion=op, slug="examen-oficial-b1").first()
-        tema_b2 = Tema.objects.filter(bloque__oposicion=op, slug="examen-oficial-b2").first()
-
-        if tema_b1 and tema_b2:
-            qs_b1 = Pregunta.objects.filter(tema=tema_b1)
-            qs_b2 = Pregunta.objects.filter(tema=tema_b2)
-        else:
-            # Fallback a bloques
-            qs_b1 = Pregunta.objects.filter(tema__bloque__oposicion=op, tema__bloque__numero=1)
-            qs_b2 = Pregunta.objects.filter(tema__bloque__oposicion=op, tema__bloque__numero=2)
-
-        ids_b1 = list(qs_b1.order_by('?').values_list('id', flat=True)[:n1])
-        ids_b2 = list(qs_b2.order_by('?').values_list('id', flat=True)[:n2])
-
-        preguntas_ids = ids_b1 + ids_b2
-        if not preguntas_ids:
-            return Response({'error': 'No hay preguntas suficientes para generar el examen.'}, status=400)
-
-        if mezclar:
-            random.shuffle(preguntas_ids)
-
-        minutos = int(request.data.get('minutos', plantilla.duracion_minutos))
-        ses = TestSession.objects.create(
-            user=user,
-            tipo='examen',
-            preguntas_ids=preguntas_ids,
-            idx_actual=0,
-            respuestas={},
-            tiempo_restante=max(1, minutos)*60,
-            estado='en_curso',
-            config={
-                'oposicion': op.slug,
-                'examen_slug': plantilla.slug,
-                'plantilla': {
-                    'preguntas_bloque1': plantilla.preguntas_bloque1,
-                    'preguntas_bloque2': plantilla.preguntas_bloque2,
-                    'duracion_minutos': plantilla.duracion_minutos,
-                }
-            }
-        )
-        return Response({
-            'id': str(ses.id),
-            'count': len(preguntas_ids),
-            'tiempo_restante': ses.tiempo_restante,
-            'config': ses.config,
-        }, status=201)
-
-
-class ImportExamenOficialView(APIView):
-    """
-    POST /api/examenes/importar/
-      - FormData:
-        - file: (CSV)
-        - oposicion: slug o nombre
-      Autorización:
-        - staff autenticado  (Authorization: Bearer ...)
-        - o cabecera X-Import-Key que coincida con settings.EXAMEN_IMPORT_KEY
-    """
-    parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request, *args, **kwargs):
-        # Seguridad sencilla y práctica:
-        ok = False
-        if request.user and request.user.is_authenticated and request.user.is_staff:
-            ok = True
-        else:
-            provided = request.headers.get("X-Import-Key", "")
-            secret = getattr(settings, "EXAMEN_IMPORT_KEY", "")
-            if secret and provided and provided == secret:
-                ok = True
-        if not ok:
-            return Response({"error": "No autorizado"}, status=403)
-
-        file = request.FILES.get("file")
-        oposicion = request.data.get("oposicion", "").strip()
-        if not file or not oposicion:
-            return Response({"error": "Faltan parámetros: 'file' y 'oposicion'."}, status=400)
-
-        try:
-            stats = import_examen_oficial(file, oposicion)
-            return Response(stats, status=200)
-        except Exception as e:
-            return Response({"error": str(e)}, status=400)

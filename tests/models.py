@@ -17,7 +17,6 @@ class Oposicion(models.Model):
     requisitos = models.TextField(blank=True, null=True, help_text="Texto para el recuadro de requisitos.")
     info_adicional = models.TextField(blank=True, null=True, help_text="Texto para el tercer recuadro (destino, promoción interna, etc.).")
 
-
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.nombre)
@@ -25,6 +24,7 @@ class Oposicion(models.Model):
 
     def __str__(self):
         return self.nombre
+
 
 class Bloque(models.Model):
     numero = models.IntegerField()
@@ -38,6 +38,7 @@ class Bloque(models.Model):
     def __str__(self):
         return f"Bloque {self.numero}: {self.nombre} ({self.oposicion.nombre})"
 
+
 class Tema(models.Model):
     numero = models.IntegerField(default=0)
     nombre_oficial = models.CharField(max_length=500, null=True)
@@ -46,9 +47,6 @@ class Tema(models.Model):
     es_premium = models.BooleanField(default=True)
     slug = models.SlugField(max_length=255, unique=True, db_index=True)
 
-    def __str__(self):
-        return self.nombre_oficial
-    
     class Meta:
         unique_together = ('bloque', 'numero')
         ordering = ['numero']
@@ -56,12 +54,15 @@ class Tema(models.Model):
     def __str__(self):
         return f"Tema {self.numero}: {self.nombre_oficial}"
 
+
 class Pregunta(models.Model):
     tema = models.ForeignKey(Tema, on_delete=models.CASCADE, related_name='preguntas')
     texto_pregunta = models.TextField()
     fuente_original = models.CharField(max_length=255, blank=True, null=True)
+
     def __str__(self):
         return self.texto_pregunta[:80] + '...'
+
 
 class Respuesta(models.Model):
     pregunta = models.ForeignKey(Pregunta, on_delete=models.CASCADE, related_name='respuestas')
@@ -70,16 +71,20 @@ class Respuesta(models.Model):
     texto_justificacion = models.TextField()
     articulo_justificacion = models.CharField(max_length=255, blank=True, null=True)
     url_fuente_oficial = models.URLField(blank=True, null=True)
+
     def __str__(self):
         return self.texto_respuesta[:80]
+
 
 class Suscripcion(models.Model):
     usuario = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
     stripe_subscription_id = models.CharField(max_length=255, blank=True, null=True)
     activa = models.BooleanField(default=False)
+
     def __str__(self):
         return f"{self.usuario.username} - {'Activa' if self.activa else 'Inactiva'}"
+
 
 class ResultadoTest(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -87,10 +92,13 @@ class ResultadoTest(models.Model):
     puntuacion = models.IntegerField()
     total_preguntas = models.IntegerField()
     fecha = models.DateTimeField(auto_now_add=True)
-    def __str__(self):
-        return f"Test de {self.usuario.username} en {self.tema.nombre_oficial} - {self.puntuacion}/{self.total_preguntas}"
+
     class Meta:
         ordering = ['-fecha']
+
+    def __str__(self):
+        return f"Test de {self.usuario.username} en {self.tema.nombre_oficial} - {self.puntuacion}/{self.total_preguntas}"
+
 
 class Post(models.Model):
     ESTADOS = (('borrador', 'Borrador'), ('publicado', 'Publicado'))
@@ -101,17 +109,18 @@ class Post(models.Model):
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
     estado = models.CharField(max_length=10, choices=ESTADOS, default='borrador')
-    
+
     class Meta:
         ordering = ['-creado_en']
-    
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.titulo)
         super().save(*args, **kwargs)
-    
+
     def __str__(self):
         return self.titulo
+
 
 class CodigoVerificacion(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -120,6 +129,8 @@ class CodigoVerificacion(models.Model):
 
     def __str__(self):
         return f"Código para {self.usuario.username}"
+
+
 class TestSession(models.Model):
     ESTADOS = (
         ("en_curso", "En curso"),
@@ -129,7 +140,7 @@ class TestSession(models.Model):
     TIPOS = (
         ("tema", "Tema"),
         ("repaso", "Repaso"),
-        ("examen", "Examen oficial")
+        ("examen", "Examen oficial"),  # ← NUEVO
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -153,34 +164,3 @@ class TestSession(models.Model):
 
     def __str__(self):
         return f"{self.id} · {self.user} · {self.tipo} · {self.estado}"
-
-class ExamenOficial(models.Model):
-    """
-    Plantilla de examen oficial para una oposición.
-    Por ahora: 60 preguntas del bloque 1 + 50 del bloque 2, 90 minutos.
-    Si el día de mañana cambia, creamos más plantillas por oposición.
-    """
-    oposicion = models.ForeignKey('Oposicion', on_delete=models.CASCADE, related_name='examenes')
-    titulo = models.CharField(max_length=255, default='Examen oficial')
-    slug = models.SlugField(max_length=255, unique=True)
-    descripcion = models.TextField(blank=True, null=True)
-
-    preguntas_bloque1 = models.PositiveIntegerField(default=60)
-    preguntas_bloque2 = models.PositiveIntegerField(default=50)
-    duracion_minutos = models.PositiveIntegerField(default=90)
-
-    activo = models.BooleanField(default=True)
-    creado_en = models.DateTimeField(auto_now_add=True)
-    actualizado_en = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ('oposicion', 'slug')
-        ordering = ['-creado_en']
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.titulo)
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.oposicion.nombre} · {self.titulo} ({self.preguntas_bloque1}+{self.preguntas_bloque2} · {self.duracion_minutos}min)"
